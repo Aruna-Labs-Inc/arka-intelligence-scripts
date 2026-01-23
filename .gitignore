@@ -4,5 +4,6 @@ node_modules/
 !package.json
 !example-output.json
 !example-org-structure.json
+!example-jira-output.json
 dist/
 *.tsbuildinfo

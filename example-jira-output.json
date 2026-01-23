@@ -1,0 +1,75 @@
+{
+  "metadata": {
+    "exportedAt": "2026-01-23T00:00:00.000Z",
+    "source": "jira",
+    "projectKey": "ENG",
+    "organizationSlug": "eng",
+    "since": null,
+    "version": "1.0.0"
+  },
+  "issues": [
+    {
+      "externalId": "ENG-123",
+      "externalUrl": "https://mycompany.atlassian.net/browse/ENG-123",
+      "title": "Implement user authentication system",
+      "issueType": "Story",
+      "authorEmail": "john.doe@company.com",
+      "assigneeEmail": "jane.smith@company.com",
+      "reporterEmail": "john.doe@company.com",
+      "state": "resolved",
+      "priority": "High",
+      "storyPoints": 8,
+      "createdAt": "2026-01-10T08:00:00.000Z",
+      "updatedAt": "2026-01-20T14:30:00.000Z",
+      "closedAt": "2026-01-20T14:30:00.000Z",
+      "resolvedAt": "2026-01-20T14:30:00.000Z",
+      "cycleTimeHours": 246.5,
+      "metadata": {
+        "labels": ["authentication", "security"],
+        "statusName": "Done"
+      }
+    },
+    {
+      "externalId": "ENG-124",
+      "externalUrl": "https://mycompany.atlassian.net/browse/ENG-124",
+      "title": "Fix login page performance issue",
+      "issueType": "Bug",
+      "authorEmail": "alice.chen@company.com",
+      "assigneeEmail": "bob.wilson@company.com",
+      "reporterEmail": "alice.chen@company.com",
+      "state": "in_progress",
+      "priority": "Critical",
+      "storyPoints": 3,
+      "createdAt": "2026-01-18T10:00:00.000Z",
+      "updatedAt": "2026-01-22T16:45:00.000Z",
+      "closedAt": null,
+      "resolvedAt": null,
+      "cycleTimeHours": null,
+      "metadata": {
+        "labels": ["bug", "performance"],
+        "statusName": "In Progress"
+      }
+    },
+    {
+      "externalId": "ENG-125",
+      "externalUrl": "https://mycompany.atlassian.net/browse/ENG-125",
+      "title": "Add dark mode to dashboard",
+      "issueType": "Feature",
+      "authorEmail": "sarah.kim@company.com",
+      "assigneeEmail": null,
+      "reporterEmail": "sarah.kim@company.com",
+      "state": "open",
+      "priority": "Medium",
+      "storyPoints": 5,
+      "createdAt": "2026-01-22T09:00:00.000Z",
+      "updatedAt": "2026-01-22T09:00:00.000Z",
+      "closedAt": null,
+      "resolvedAt": null,
+      "cycleTimeHours": null,
+      "metadata": {
+        "labels": ["frontend", "ui"],
+        "statusName": "To Do"
+      }
+    }
+  ]
+}

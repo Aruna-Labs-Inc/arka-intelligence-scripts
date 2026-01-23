@@ -528,50 +528,57 @@ async function exportIssues(
 
   console.log(`Fetching issues from ${owner}/${repo}...`);
 
-  const issueParams: Record<string, string> = {
-    state: "all",
-    sort: "updated",
-    direction: "desc",
-  };
-  if (since) issueParams.since = since.toISOString();
+  try {
+    const issueParams: Record<string, string> = {
+      state: "all",
+      sort: "updated",
+      direction: "desc",
+    };
+    if (since) issueParams.since = since.toISOString();
 
-  const issues = await ghApiPaginated<GitHubIssue>(
-    `repos/${owner}/${repo}/issues`,
-    issueParams,
-    maxPages
-  );
+    const issues = await ghApiPaginated<GitHubIssue>(
+      `repos/${owner}/${repo}/issues`,
+      issueParams,
+      maxPages
+    );
 
-  // Filter out PRs (GitHub API returns PRs in issues endpoint)
-  const realIssues = issues.filter((i) => !("pull_request" in i));
+    // Filter out PRs (GitHub API returns PRs in issues endpoint)
+    const realIssues = issues.filter((i) => !("pull_request" in i));
 
-  console.log(`Processing ${realIssues.length} issues...`);
+    console.log(`Processing ${realIssues.length} issues...`);
 
-  const exported: ExportPayload["issues"] = [];
+    const exported: ExportPayload["issues"] = [];
 
-  for (const i of realIssues) {
-    // Skip issues from bots
-    if (i.user && isBot(i.user.login)) continue;
-    if (i.assignee && isBot(i.assignee.login)) continue;
+    for (const i of realIssues) {
+      // Skip issues from bots
+      if (i.user && isBot(i.user.login)) continue;
+      if (i.assignee && isBot(i.assignee.login)) continue;
 
-    exported.push({
-      externalId: String(i.number),
-      externalUrl: i.html_url,
-      title: i.title,
-      authorUsername: i.user?.login || null,
-      assigneeUsername: i.assignee?.login || null,
-      state: i.state === "closed" ? "closed" : "open",
-      createdAt: i.created_at,
-      closedAt: i.closed_at,
-      resolvedAt: i.closed_at,
-      cycleTimeHours: calculateCycleTimeHours(i.created_at, i.closed_at),
-      metadata: {
-        labels: i.labels.map((l) => l.name),
-      },
-    });
+      exported.push({
+        externalId: String(i.number),
+        externalUrl: i.html_url,
+        title: i.title,
+        authorUsername: i.user?.login || null,
+        assigneeUsername: i.assignee?.login || null,
+        state: i.state === "closed" ? "closed" : "open",
+        createdAt: i.created_at,
+        closedAt: i.closed_at,
+        resolvedAt: i.closed_at,
+        cycleTimeHours: calculateCycleTimeHours(i.created_at, i.closed_at),
+        metadata: {
+          labels: i.labels.map((l) => l.name),
+        },
+      });
+    }
+
+    console.log(`Exported ${exported.length} issues`);
+    return exported;
+  } catch (error) {
+    console.log(
+      `⚠️  Could not fetch issues (may be disabled or in Jira). Continuing without issues...`
+    );
+    return [];
   }
-
-  console.log(`Exported ${exported.length} issues`);
-  return exported;
 }
 
 async function exportContributors(

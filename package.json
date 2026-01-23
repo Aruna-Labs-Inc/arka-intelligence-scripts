@@ -4,7 +4,8 @@
   "description": "Data export scripts for Arka Intelligence platform",
   "main": "sync-github.ts",
   "scripts": {
-    "export": "tsx sync-github.ts"
+    "export": "tsx sync-github.ts",
+    "export:jira": "tsx sync-jira.ts"
   },
   "keywords": [
     "arka",
