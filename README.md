@@ -142,6 +142,79 @@ The generated JSON file has this structure:
 
 See `example-output.json` for a complete example.
 
+## Data Structure & Relationships
+
+Understanding how the exported data is organized is important for proper import into Arka Intelligence.
+
+### Organizational Hierarchy
+
+```
+Organization (identified by organizationSlug)
+  └── Repository (metadata.repository)
+       ├── Contributors (people who contributed)
+       ├── Pull Requests (linked to contributors via authorUsername)
+       ├── Commits (linked to contributors via authorUsername)
+       └── Issues (linked to contributors via authorUsername & assigneeUsername)
+```
+
+### Key Relationships
+
+1. **Organization**
+   - Identified by `metadata.organizationSlug`
+   - All data in the export belongs to this single organization
+   - Default: Uses the repository owner name if not specified
+
+2. **Contributors**
+   - Unique GitHub users who authored PRs, commits, or issues
+   - Identified by `externalUsername` (GitHub username)
+   - Referenced by pull requests, commits, and issues
+   - Automatically excludes bot accounts
+
+3. **Pull Requests**
+   - `authorUsername` → References a contributor's `externalUsername`
+   - Belongs to repository specified in `metadata.repository`
+   - Contains metadata about labels, reviewers, draft status
+
+4. **Commits**
+   - `authorUsername` → References a contributor's `externalUsername`
+   - Belongs to repository specified in `metadata.repository`
+   - Includes AI tool detection (Cursor, Copilot, Claude, ChatGPT)
+
+5. **Issues**
+   - `authorUsername` → References a contributor's `externalUsername`
+   - `assigneeUsername` → References a contributor's `externalUsername` (if assigned)
+   - Belongs to repository specified in `metadata.repository`
+
+### Data Integrity
+
+When importing this data into Arka Intelligence, the system should:
+
+1. **Create/Update Organization** using `metadata.organizationSlug`
+2. **Create/Update Repository** using `metadata.repository` under the organization
+3. **Create Contributors** from the `contributors` array
+   - Use `externalUsername` as the unique identifier
+   - Store `displayName` and `avatarUrl` for display purposes
+4. **Link Work Items** to contributors by matching `authorUsername`/`assigneeUsername` to `externalUsername`
+5. **Associate All Data** with the repository and organization
+
+### Example Import Flow
+
+```
+1. Check if organization "myorg" exists, create if not
+2. Check if repository "myorg/myrepo" exists, create if not
+3. For each contributor: Create/update user profile
+4. For each PR: Link to contributor by username, link to repository
+5. For each commit: Link to contributor by username, link to repository
+6. For each issue: Link to contributor + assignee by username, link to repository
+```
+
+### Important Notes
+
+- **Usernames are case-sensitive** - Match exactly as provided
+- **Contributors without profiles** - If a GitHub user is deleted/private, their username will still be present but `displayName` may be null
+- **Bot filtering** - The export automatically excludes common bot accounts
+- **Orphaned references** - If a contributor is missing from the `contributors` array but referenced in work items, the importer should handle gracefully (create stub profile or skip)
+
 ## Features
 
 - **Batch GraphQL queries** - Fetches 100 PR details per query (much faster than REST API)
