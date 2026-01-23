@@ -146,6 +146,124 @@ See `example-output.json` for a complete example.
 
 Understanding how the exported data is organized is important for proper import into Arka Intelligence.
 
+### Organizational Structure (HR Data)
+
+**Note:** This GitHub export provides **activity data** (PRs, commits, issues). For complete analytics, you also need **organizational structure data** from your HR system (Workday, BambooHR, etc.).
+
+#### Required Organizational Data
+
+Create a separate JSON file with your team structure:
+
+```json
+{
+  "organizationSlug": "myorg",
+  "teams": [
+    {
+      "teamId": "eng-platform",
+      "teamName": "Platform Engineering",
+      "parentTeamId": null,
+      "members": [
+        {
+          "githubUsername": "johndoe",
+          "email": "john.doe@company.com",
+          "role": "Senior Engineer",
+          "managerId": "janedoe"
+        },
+        {
+          "githubUsername": "janedoe",
+          "email": "jane.doe@company.com",
+          "role": "Engineering Manager",
+          "managerId": null
+        }
+      ]
+    },
+    {
+      "teamId": "eng-frontend",
+      "teamName": "Frontend Engineering",
+      "parentTeamId": "eng-platform",
+      "members": [
+        {
+          "githubUsername": "bobsmith",
+          "email": "bob.smith@company.com",
+          "role": "Frontend Engineer",
+          "managerId": "johndoe"
+        }
+      ]
+    }
+  ]
+}
+```
+
+#### Organizational Relationships
+
+1. **Team Hierarchy**
+   - `teamId` - Unique identifier for the team
+   - `teamName` - Display name for the team
+   - `parentTeamId` - Creates nested team structures (null for top-level teams)
+
+2. **Team Members**
+   - `githubUsername` - **CRITICAL** - Links to contributors in the GitHub export
+   - `email` - Employee email address
+   - `role` - Job title/role (Engineer, Manager, etc.)
+   - `managerId` - GitHub username of their manager (creates reporting hierarchy)
+
+3. **Reporting Structure**
+   - `managerId` links team members together
+   - Set to `null` for top-level managers/executives
+   - Creates manager → report relationships for analytics
+
+#### Mapping GitHub to Organization
+
+The system links GitHub activity to your org structure by matching:
+- **GitHub export**: `contributors[].externalUsername`
+- **Org structure**: `teams[].members[].githubUsername`
+
+Example:
+```
+GitHub Export:
+  contributors: [{ externalUsername: "johndoe", ... }]
+
+Org Structure:
+  teams: [{
+    members: [{
+      githubUsername: "johndoe",  ← MUST MATCH
+      managerId: "janedoe",
+      ...
+    }]
+  }]
+```
+
+#### Exporting from HR Systems
+
+**From Workday:**
+1. Export employee directory with fields:
+   - Employee ID
+   - Full Name
+   - Email
+   - Manager Email
+   - Department/Team
+   - Job Title
+2. Manually map employee emails to GitHub usernames
+3. Structure into the JSON format above
+
+**From BambooHR/Gusto/ADP:**
+- Similar process: export employee data, map to GitHub usernames
+
+**Manual Entry:**
+- For small teams, create the JSON manually
+- Ensure GitHub usernames are accurate
+- See `example-org-structure.json` for a complete example with nested teams
+
+#### Why This Matters
+
+Combining GitHub activity data with organizational structure enables:
+- **Team Performance** - Metrics by team (velocity, cycle time, etc.)
+- **Manager Dashboards** - See direct reports' contributions
+- **Hierarchy Views** - Roll up metrics from teams to departments
+- **Impact Analysis** - Understand who's working on what
+
+Without organizational data, Arka Intelligence can only show individual contributor metrics, not team/manager views.
+
 ### Organizational Hierarchy
 
 ```

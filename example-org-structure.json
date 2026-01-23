@@ -1,0 +1,111 @@
+{
+  "organizationSlug": "example-org",
+  "exportedAt": "2026-01-23T00:00:00.000Z",
+  "version": "1.0.0",
+  "teams": [
+    {
+      "teamId": "engineering",
+      "teamName": "Engineering",
+      "parentTeamId": null,
+      "description": "All engineering teams",
+      "members": [
+        {
+          "githubUsername": "janedoe",
+          "email": "jane.doe@example.com",
+          "fullName": "Jane Doe",
+          "role": "VP of Engineering",
+          "managerId": null,
+          "startDate": "2020-01-15"
+        }
+      ]
+    },
+    {
+      "teamId": "eng-platform",
+      "teamName": "Platform Engineering",
+      "parentTeamId": "engineering",
+      "description": "Infrastructure and platform services",
+      "members": [
+        {
+          "githubUsername": "johndoe",
+          "email": "john.doe@example.com",
+          "fullName": "John Doe",
+          "role": "Engineering Manager",
+          "managerId": "janedoe",
+          "startDate": "2021-03-01"
+        },
+        {
+          "githubUsername": "alicechen",
+          "email": "alice.chen@example.com",
+          "fullName": "Alice Chen",
+          "role": "Senior Platform Engineer",
+          "managerId": "johndoe",
+          "startDate": "2021-06-15"
+        },
+        {
+          "githubUsername": "bobwilson",
+          "email": "bob.wilson@example.com",
+          "fullName": "Bob Wilson",
+          "role": "Platform Engineer",
+          "managerId": "johndoe",
+          "startDate": "2022-09-01"
+        }
+      ]
+    },
+    {
+      "teamId": "eng-frontend",
+      "teamName": "Frontend Engineering",
+      "parentTeamId": "engineering",
+      "description": "Web and mobile frontend development",
+      "members": [
+        {
+          "githubUsername": "sarahkim",
+          "email": "sarah.kim@example.com",
+          "fullName": "Sarah Kim",
+          "role": "Engineering Manager",
+          "managerId": "janedoe",
+          "startDate": "2020-08-01"
+        },
+        {
+          "githubUsername": "mikebrown",
+          "email": "mike.brown@example.com",
+          "fullName": "Mike Brown",
+          "role": "Senior Frontend Engineer",
+          "managerId": "sarahkim",
+          "startDate": "2021-01-10"
+        },
+        {
+          "githubUsername": "emilypark",
+          "email": "emily.park@example.com",
+          "fullName": "Emily Park",
+          "role": "Frontend Engineer",
+          "managerId": "sarahkim",
+          "startDate": "2023-02-15"
+        }
+      ]
+    },
+    {
+      "teamId": "eng-backend",
+      "teamName": "Backend Engineering",
+      "parentTeamId": "engineering",
+      "description": "API and backend services",
+      "members": [
+        {
+          "githubUsername": "davidlee",
+          "email": "david.lee@example.com",
+          "fullName": "David Lee",
+          "role": "Engineering Manager",
+          "managerId": "janedoe",
+          "startDate": "2020-05-01"
+        },
+        {
+          "githubUsername": "lisawang",
+          "email": "lisa.wang@example.com",
+          "fullName": "Lisa Wang",
+          "role": "Staff Engineer",
+          "managerId": "davidlee",
+          "startDate": "2019-11-01"
+        }
+      ]
+    }
+  ]
+}
