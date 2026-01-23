@@ -1,0 +1,88 @@
+{
+  "metadata": {
+    "exportedAt": "2026-01-23T00:00:00.000Z",
+    "repository": "example-org/example-repo",
+    "organizationSlug": "example-org",
+    "since": null,
+    "version": "1.0.0"
+  },
+  "contributors": [
+    {
+      "externalUsername": "johndoe",
+      "externalId": "123456",
+      "displayName": "John Doe",
+      "avatarUrl": "https://avatars.githubusercontent.com/u/123456"
+    },
+    {
+      "externalUsername": "janedoe",
+      "externalId": "789012",
+      "displayName": "Jane Doe",
+      "avatarUrl": "https://avatars.githubusercontent.com/u/789012"
+    }
+  ],
+  "pullRequests": [
+    {
+      "externalId": "42",
+      "externalUrl": "https://github.com/example-org/example-repo/pull/42",
+      "title": "Add new feature for user authentication",
+      "authorUsername": "johndoe",
+      "state": "merged",
+      "createdAt": "2026-01-15T10:00:00Z",
+      "mergedAt": "2026-01-16T14:30:00Z",
+      "closedAt": "2026-01-16T14:30:00Z",
+      "additions": 245,
+      "deletions": 12,
+      "commitsCount": 5,
+      "reviewsCount": 3,
+      "cycleTimeHours": 28.5,
+      "metadata": {
+        "labels": ["feature", "authentication"],
+        "reviewers": ["janedoe"],
+        "draft": false
+      }
+    }
+  ],
+  "commits": [
+    {
+      "sha": "abc123def456",
+      "externalUrl": "https://github.com/example-org/example-repo/commit/abc123def456",
+      "authorUsername": "johndoe",
+      "message": "feat: implement OAuth login flow\n\nCo-authored-by: Cursor AI",
+      "committedAt": "2026-01-15T10:30:00Z",
+      "additions": 120,
+      "deletions": 5,
+      "isAiAssisted": true,
+      "aiTool": "Cursor",
+      "aiModel": null
+    },
+    {
+      "sha": "def456ghi789",
+      "externalUrl": "https://github.com/example-org/example-repo/commit/def456ghi789",
+      "authorUsername": "janedoe",
+      "message": "fix: resolve bug in user session handling",
+      "committedAt": "2026-01-16T09:15:00Z",
+      "additions": 25,
+      "deletions": 8,
+      "isAiAssisted": false,
+      "aiTool": null,
+      "aiModel": null
+    }
+  ],
+  "issues": [
+    {
+      "externalId": "123",
+      "externalUrl": "https://github.com/example-org/example-repo/issues/123",
+      "title": "Bug: Login page not loading correctly",
+      "authorUsername": "janedoe",
+      "assigneeUsername": "johndoe",
+      "state": "closed",
+      "createdAt": "2026-01-10T08:00:00Z",
+      "closedAt": "2026-01-15T16:00:00Z",
+      "resolvedAt": "2026-01-15T16:00:00Z",
+      "cycleTimeHours": 128,
+      "metadata": {
+        "labels": ["bug", "high-priority"]
+      }
+    }
+  ]
+}

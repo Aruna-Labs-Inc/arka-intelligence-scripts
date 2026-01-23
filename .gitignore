@@ -1,0 +1,7 @@
+node_modules/
+*.log
+*.json
+!package.json
+!example-output.json
+dist/
+*.tsbuildinfo
