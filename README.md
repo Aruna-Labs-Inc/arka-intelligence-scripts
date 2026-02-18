@@ -13,8 +13,8 @@ Export data from GitHub and Jira into JSON files for import into Arka Intelligen
 npm install
 gh auth login
 
-# 2. Export GitHub data (PRs, commits, issues)
-npm run export -- continuedev continue
+# 2. Export GitHub data (PRs, commits, issues) — all repos by default
+npm run export -- continuedev
 
 # 3. Upload arka-data.json to Arka Intelligence
 ```
@@ -42,18 +42,19 @@ npm run export:jira -- mycompany.atlassian.net PROJ
 ### GitHub Export
 
 ```bash
-npm run export -- owner repo [options]
+npm run export -- owner [repo] [options]
 
 Options:
   --output=<file>      Output file (default: arka-data.json)
   --org-slug=<slug>    Organization slug (default: repo owner)
   --since=YYYY-MM-DD   Only export after date
-  --max-pages=<n>      Max pages to fetch (default: 50)
+  --max-pages=<n>      Max pages per repo (default: 50)
 
 Examples:
-  npm run export -- facebook react
-  npm run export -- vercel next.js --since=2025-01-01
-  npm run export -- anthropics claude-code --max-pages=100
+  npm run export -- facebook                        # all repos
+  npm run export -- facebook react                  # single repo
+  npm run export -- vercel --since=2025-01-01
+  npm run export -- anthropics --max-pages=100
 ```
 
 ### Jira Export
@@ -81,7 +82,7 @@ Examples:
 - **Pull Requests** - State, author, lines changed, cycle time, AI tool detection
 - **Commits** - Author, message, changes, AI assistance (Cursor, Copilot, Claude, ChatGPT)
 - **Issues** (optional) - State, author, assignee, cycle time
-- **Contributors** - GitHub username, display name, avatar (bots excluded)
+- **Contributors** - GitHub username, display name, email, avatar (bots excluded)
 
 **Jira Export** (`jira-data.json`):
 - **Issues** - Issue type, state, priority, story points, cycle time
