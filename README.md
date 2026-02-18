@@ -14,7 +14,7 @@ npm install
 gh auth login
 
 # 2. Export GitHub data (PRs, commits, issues) — all repos by default
-npm run export -- continuedev
+npm run export -- your-org
 
 # 3. Upload arka-data.json to Arka Intelligence
 ```
@@ -51,10 +51,10 @@ Options:
   --max-pages=<n>      Max pages per repo (default: 50)
 
 Examples:
-  npm run export -- facebook                        # all repos
-  npm run export -- facebook react                  # single repo
-  npm run export -- vercel --since=2025-01-01
-  npm run export -- anthropics --max-pages=100
+  npm run export -- your-org                        # all repos
+  npm run export -- your-org continue               # single repo
+  npm run export -- your-org --since=2025-01-01
+  npm run export -- your-org --max-pages=100
 ```
 
 ### Jira Export
