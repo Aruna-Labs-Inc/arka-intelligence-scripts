@@ -72,6 +72,7 @@ interface GitHubUser {
   login: string;
   id: number;
   name: string | null;
+  email: string | null;
   avatar_url: string;
   type: string;
 }
@@ -97,6 +98,7 @@ interface ExportPayload {
     externalUsername: string;
     externalId: string;
     displayName: string | null;
+    email: string | null;
     avatarUrl: string | null;
   }>;
   pullRequests: Array<{
@@ -321,6 +323,45 @@ async function fetchGitHubUserProfile(
   } catch {
     return null;
   }
+}
+
+async function fetchOrgMemberEmailMap(
+  owner: string
+): Promise<Map<string, string>> {
+  const emailMap = new Map<string, string>();
+  let cursor: string | null = null;
+
+  while (true) {
+    const afterClause = cursor ? `, after: "${cursor}"` : "";
+    const query = `query { organization(login: "${owner}") { membersWithRole(first: 100${afterClause}) { nodes { login email } pageInfo { hasNextPage endCursor } } } }`;
+
+    try {
+      const cmd = `gh api graphql -f query='${query.replace(/'/g, "'\\''")}'`;
+      const result = execSync(cmd, {
+        encoding: "utf-8",
+        maxBuffer: 50 * 1024 * 1024,
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+      const data = JSON.parse(result);
+      const membersData = data?.data?.organization?.membersWithRole;
+
+      if (!membersData) break;
+
+      for (const node of membersData.nodes) {
+        if (node.login && node.email) {
+          emailMap.set(node.login, node.email);
+        }
+      }
+
+      if (!membersData.pageInfo.hasNextPage) break;
+      cursor = membersData.pageInfo.endCursor;
+    } catch {
+      // Not an org or no admin access — silently skip
+      break;
+    }
+  }
+
+  return emailMap;
 }
 
 async function fetchPrDetailsBatch(
@@ -584,7 +625,8 @@ async function exportIssues(
 async function exportContributors(
   pullRequests: ExportPayload["pullRequests"],
   commits: ExportPayload["commits"],
-  issues: ExportPayload["issues"]
+  issues: ExportPayload["issues"],
+  options: ExportOptions
 ): Promise<ExportPayload["contributors"]> {
   console.log("Identifying contributors...");
 
@@ -602,6 +644,10 @@ async function exportContributors(
     if (issue.assigneeUsername) usernames.add(issue.assigneeUsername);
   }
 
+  console.log(`Fetching org member emails for ${options.owner}...`);
+  const orgEmailMap = await fetchOrgMemberEmailMap(options.owner);
+  console.log(`Found emails for ${orgEmailMap.size} org members`);
+
   console.log(`Fetching profiles for ${usernames.size} contributors...`);
 
   const contributors: ExportPayload["contributors"] = [];
@@ -610,10 +656,14 @@ async function exportContributors(
     const profile = await fetchGitHubUserProfile(username);
 
     if (profile) {
+      // Prefer org admin email (includes private emails) over public profile email
+      const email = orgEmailMap.get(profile.login) ?? profile.email;
+
       contributors.push({
         externalUsername: profile.login,
         externalId: String(profile.id),
         displayName: profile.name,
+        email: email ?? null,
         avatarUrl: profile.avatar_url,
       });
     }
@@ -695,7 +745,8 @@ async function main() {
     const contributors = await exportContributors(
       pullRequests,
       commits,
-      issues
+      issues,
+      options
     );
 
     // Build payload
