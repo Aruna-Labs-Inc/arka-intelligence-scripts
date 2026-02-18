@@ -355,8 +355,20 @@ async function fetchOrgMemberEmailMap(
 
       if (!membersData.pageInfo.hasNextPage) break;
       cursor = membersData.pageInfo.endCursor;
-    } catch {
-      // Not an org or no admin access — silently skip
+    } catch (error: any) {
+      const stderr = error.stderr?.toString() || "";
+      const stdout = error.stdout?.toString() || "";
+      if (cursor !== null) {
+        // Failed mid-pagination — warn so the user knows emails may be incomplete
+        console.warn(
+          `Warning: failed to fetch all org member emails (got ${emailMap.size} so far). ` +
+          `Emails for remaining members will fall back to public profile.`
+        );
+        if (stderr.includes("rate limit") || stdout.includes("rate limit")) {
+          console.warn("Rate limit hit — consider re-running after the limit resets.");
+        }
+      }
+      // First-page failure = not an org or no admin access, skip silently
       break;
     }
   }
