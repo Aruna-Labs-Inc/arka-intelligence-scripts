@@ -8,16 +8,19 @@
  * Usage:
  *   npm install
  *   npm run export -- <owner> <repo> [options]
+ *   npm run export -- <owner> --all-repos [options]
  *
  * Example:
  *   npm run export -- myorg myrepo --output=data.json
  *   npm run export -- myorg myrepo --since=2025-01-01 --max-pages=50
+ *   npm run export -- myorg --all-repos --since=2025-01-01
  *
  * Options:
  *   --output=<file>      Output JSON file (default: arka-data.json)
  *   --org-slug=<slug>    Organization slug in Arka (default: repo owner)
  *   --since=<date>       Only export data after this date (YYYY-MM-DD)
  *   --max-pages=<n>      Maximum pages to fetch (default: 50, 100 items per page)
+ *   --all-repos          Export all repos the account has access to
  */
 
 import { execSync } from "child_process";
@@ -364,6 +367,33 @@ async function fetchOrgMemberEmailMap(
   return emailMap;
 }
 
+interface GitHubRepo {
+  name: string;
+  archived: boolean;
+}
+
+async function fetchAllRepos(owner: string): Promise<string[]> {
+  console.log(`Fetching all repos for ${owner}...`);
+
+  let repos: GitHubRepo[] = [];
+
+  // Try org repos first (works for org admins and gets private repos)
+  try {
+    repos = await ghApiPaginated<GitHubRepo>(`orgs/${owner}/repos`, {
+      type: "all",
+    });
+  } catch {
+    // Fall back to user repos
+    repos = await ghApiPaginated<GitHubRepo>(`users/${owner}/repos`, {
+      type: "all",
+    });
+  }
+
+  const names = repos.filter((r) => !r.archived).map((r) => r.name);
+  console.log(`Found ${names.length} repos (${repos.length - names.length} archived skipped)`);
+  return names;
+}
+
 async function fetchPrDetailsBatch(
   owner: string,
   repo: string,
@@ -679,32 +709,35 @@ async function exportContributors(
 
 async function main() {
   const args = process.argv.slice(2);
+  const allReposFlag = args.includes("--all-repos");
+  const positional = args.filter((a) => !a.startsWith("--"));
 
-  if (args.length < 2) {
-    console.log("Usage: npm run export -- <owner> <repo> [options]");
+  if (positional.length < 1 || (!allReposFlag && positional.length < 2)) {
+    console.log("Usage:");
+    console.log("  npm run export -- <owner> <repo> [options]");
+    console.log("  npm run export -- <owner> --all-repos [options]");
     console.log("");
     console.log("Options:");
     console.log("  --output=<file>      Output file (default: arka-data.json)");
-    console.log(
-      "  --org-slug=<slug>    Organization slug (default: repo owner)"
-    );
+    console.log("  --org-slug=<slug>    Organization slug (default: repo owner)");
     console.log("  --since=<date>       Only export after date (YYYY-MM-DD)");
-    console.log("  --max-pages=<n>      Max pages to fetch (default: 50)");
+    console.log("  --max-pages=<n>      Max pages per repo (default: 50)");
+    console.log("  --all-repos          Export all repos the account has access to");
     console.log("");
-    console.log("Example:");
+    console.log("Examples:");
     console.log("  npm run export -- myorg myrepo --output=data.json");
+    console.log("  npm run export -- myorg --all-repos --since=2025-01-01");
     process.exit(1);
   }
 
-  const owner = args[0];
-  const repo = args[1];
+  const owner = positional[0];
 
   let outputFile = "arka-data.json";
   let orgSlug = owner;
   let since: Date | undefined;
   let maxPages = 50;
 
-  for (const arg of args.slice(2)) {
+  for (const arg of args) {
     if (arg.startsWith("--output=")) {
       outputFile = arg.replace("--output=", "");
     }
@@ -719,49 +752,96 @@ async function main() {
     }
   }
 
+  // Determine repos to process
+  let repos: string[];
+  if (allReposFlag) {
+    repos = await fetchAllRepos(owner);
+    if (repos.length === 0) {
+      console.error("No repos found.");
+      process.exit(1);
+    }
+  } else {
+    repos = [positional[1]];
+  }
+
   console.log("=".repeat(60));
-  console.log(`Exporting GitHub data: ${owner}/${repo}`);
+  if (allReposFlag) {
+    console.log(`Exporting GitHub data: ${owner} (${repos.length} repos)`);
+  } else {
+    console.log(`Exporting GitHub data: ${owner}/${repos[0]}`);
+  }
   console.log(`Organization: ${orgSlug}`);
   console.log(`Since: ${since?.toISOString() || "all time"}`);
-  console.log(`Max pages: ${maxPages}`);
+  console.log(`Max pages per repo: ${maxPages}`);
   console.log(`Output file: ${outputFile}`);
   console.log("=".repeat(60));
   console.log("");
 
   try {
-    const options: ExportOptions = {
+    const allPullRequests: ExportPayload["pullRequests"] = [];
+    const allCommits: ExportPayload["commits"] = [];
+    const allIssues: ExportPayload["issues"] = [];
+    const multiRepo = repos.length > 1;
+
+    for (const repo of repos) {
+      if (multiRepo) {
+        console.log("");
+        console.log(`--- Repo: ${repo} ---`);
+      }
+
+      const options: ExportOptions = {
+        owner,
+        repo,
+        orgSlug,
+        outputFile,
+        since,
+        maxPages,
+      };
+
+      const prs = await exportPullRequests(options);
+      const commits = await exportCommits(options);
+      const issues = await exportIssues(options);
+
+      // Prefix externalId with repo name to avoid collisions across repos
+      if (multiRepo) {
+        for (const pr of prs) pr.externalId = `${repo}/${pr.externalId}`;
+        for (const issue of issues) issue.externalId = `${repo}/${issue.externalId}`;
+      }
+
+      allPullRequests.push(...prs);
+      allCommits.push(...commits);
+      allIssues.push(...issues);
+    }
+
+    const baseOptions: ExportOptions = {
       owner,
-      repo,
+      repo: repos[0],
       orgSlug,
       outputFile,
       since,
       maxPages,
     };
 
-    // Export all data
-    const pullRequests = await exportPullRequests(options);
-    const commits = await exportCommits(options);
-    const issues = await exportIssues(options);
     const contributors = await exportContributors(
-      pullRequests,
-      commits,
-      issues,
-      options
+      allPullRequests,
+      allCommits,
+      allIssues,
+      baseOptions
     );
 
     // Build payload
     const payload: ExportPayload = {
       metadata: {
         exportedAt: new Date().toISOString(),
-        repository: `${owner}/${repo}`,
+        repository: multiRepo ? `${owner}/*` : `${owner}/${repos[0]}`,
         organizationSlug: orgSlug,
         since: since?.toISOString() || null,
         version: "1.0.0",
       },
       contributors,
-      pullRequests,
-      commits,
-      issues,
+      pullRequests: allPullRequests,
+      commits: allCommits,
+      issues: allIssues,
     };
 
     // Write to file
@@ -771,10 +851,11 @@ async function main() {
     console.log("=".repeat(60));
     console.log("EXPORT COMPLETE");
     console.log("=".repeat(60));
+    console.log(`  Repos:         ${repos.length}`);
     console.log(`  Contributors:  ${contributors.length}`);
-    console.log(`  Pull Requests: ${pullRequests.length}`);
-    console.log(`  Commits:       ${commits.length}`);
-    console.log(`  Issues:        ${issues.length}`);
+    console.log(`  Pull Requests: ${allPullRequests.length}`);
+    console.log(`  Commits:       ${allCommits.length}`);
+    console.log(`  Issues:        ${allIssues.length}`);
     console.log("");
     console.log(`Output written to: ${outputFile}`);
     console.log(
@@ -783,9 +864,7 @@ async function main() {
     console.log("");
     console.log("Next steps:");
     console.log("  1. Review the exported data in the JSON file");
-    console.log(
-      "  2. Upload the file to your Arka Intelligence organization"
-    );
+    console.log("  2. Upload the file to your Arka Intelligence organization");
 
     process.exit(0);
   } catch (error) {
