@@ -806,9 +806,21 @@ async function main() {
         maxPages,
       };
 
-      const prs = await exportPullRequests(options);
-      const commits = await exportCommits(options);
-      const issues = await exportIssues(options);
+      let prs: ExportPayload["pullRequests"] = [];
+      let commits: ExportPayload["commits"] = [];
+      let issues: ExportPayload["issues"] = [];
+      try {
+        prs = await exportPullRequests(options);
+        commits = await exportCommits(options);
+        issues = await exportIssues(options);
+      } catch (err: any) {
+        const out = err?.stdout?.toString() || err?.message || "";
+        if (out.includes("409") || out.includes("Git Repository is empty")) {
+          console.log(`Skipping ${repo}: repository is empty.`);
+          continue;
+        }
+        throw err;
+      }
 
       // Prefix externalId with repo name to avoid collisions across repos
       if (multiRepo) {
