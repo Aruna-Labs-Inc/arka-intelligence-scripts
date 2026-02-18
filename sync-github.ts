@@ -7,20 +7,17 @@
  *
  * Usage:
  *   npm install
- *   npm run export -- <owner> <repo> [options]
- *   npm run export -- <owner> --all-repos [options]
+ *   npm run export -- <owner> [repo] [options]
  *
  * Example:
- *   npm run export -- myorg myrepo --output=data.json
+ *   npm run export -- myorg --output=data.json
  *   npm run export -- myorg myrepo --since=2025-01-01 --max-pages=50
- *   npm run export -- myorg --all-repos --since=2025-01-01
  *
  * Options:
  *   --output=<file>      Output JSON file (default: arka-data.json)
  *   --org-slug=<slug>    Organization slug in Arka (default: repo owner)
  *   --since=<date>       Only export data after this date (YYYY-MM-DD)
  *   --max-pages=<n>      Maximum pages to fetch (default: 50, 100 items per page)
- *   --all-repos          Export all repos the account has access to
  */
 
 import { execSync } from "child_process";
@@ -709,28 +706,27 @@ async function exportContributors(
 
 async function main() {
   const args = process.argv.slice(2);
-  const allReposFlag = args.includes("--all-repos");
   const positional = args.filter((a) => !a.startsWith("--"));
 
-  if (positional.length < 1 || (!allReposFlag && positional.length < 2)) {
+  if (positional.length < 1) {
     console.log("Usage:");
-    console.log("  npm run export -- <owner> <repo> [options]");
-    console.log("  npm run export -- <owner> --all-repos [options]");
+    console.log("  npm run export -- <owner> [repo] [options]");
     console.log("");
     console.log("Options:");
     console.log("  --output=<file>      Output file (default: arka-data.json)");
     console.log("  --org-slug=<slug>    Organization slug (default: repo owner)");
     console.log("  --since=<date>       Only export after date (YYYY-MM-DD)");
     console.log("  --max-pages=<n>      Max pages per repo (default: 50)");
-    console.log("  --all-repos          Export all repos the account has access to");
     console.log("");
     console.log("Examples:");
-    console.log("  npm run export -- myorg myrepo --output=data.json");
-    console.log("  npm run export -- myorg --all-repos --since=2025-01-01");
+    console.log("  npm run export -- myorg                       # all repos");
+    console.log("  npm run export -- myorg myrepo                # single repo");
+    console.log("  npm run export -- myorg --since=2025-01-01");
     process.exit(1);
   }
 
   const owner = positional[0];
+  const singleRepo = positional[1] ?? null;
 
   let outputFile = "arka-data.json";
   let orgSlug = owner;
@@ -754,18 +750,18 @@ async function main() {
 
   // Determine repos to process
   let repos: string[];
-  if (allReposFlag) {
+  if (singleRepo) {
+    repos = [singleRepo];
+  } else {
     repos = await fetchAllRepos(owner);
     if (repos.length === 0) {
       console.error("No repos found.");
       process.exit(1);
     }
-  } else {
-    repos = [positional[1]];
   }
 
   console.log("=".repeat(60));
-  if (allReposFlag) {
+  if (repos.length > 1) {
     console.log(`Exporting GitHub data: ${owner} (${repos.length} repos)`);
   } else {
     console.log(`Exporting GitHub data: ${owner}/${repos[0]}`);
