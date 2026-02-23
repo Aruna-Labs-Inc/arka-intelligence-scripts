@@ -390,12 +390,12 @@ async function fetchAllRepos(owner: string): Promise<string[]> {
   try {
     repos = await ghApiPaginated<GitHubRepo>(`orgs/${owner}/repos`, {
       type: "all",
-    });
+    }, 100);
   } catch {
     // Fall back to user repos
     repos = await ghApiPaginated<GitHubRepo>(`users/${owner}/repos`, {
       type: "all",
-    });
+    }, 100);
   }
 
   const names = repos.filter((r) => !r.archived).map((r) => r.name);
@@ -579,7 +579,7 @@ async function exportCommits(
 
   for (const c of commits) {
     // Skip commits from bots
-    if (c.author && isBot(c.author.login)) continue;
+    if (c.author?.login && isBot(c.author.login)) continue;
 
     const aiDetection = detectAiTool(c.commit.message);
 
