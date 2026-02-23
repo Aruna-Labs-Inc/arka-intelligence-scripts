@@ -6,11 +6,12 @@
  *
  * Usage:
  *   npm install
- *   npm run export:jira -- <jira-domain> <project-key> [options]
+ *   npm run export:jira -- <jira-domain> [project-key] [options]
  *
  * Example:
  *   npm run export:jira -- mycompany.atlassian.net PROJ --output=jira-data.json
  *   npm run export:jira -- mycompany.atlassian.net PROJ --since=2025-01-01
+ *   npm run export:jira -- mycompany.atlassian.net --since=2025-01-01
  *
  * Authentication:
  *   Set environment variables:
@@ -71,7 +72,7 @@ interface JiraIssue {
 
 interface ExportOptions {
   domain: string;
-  projectKey: string;
+  projectKey?: string;
   orgSlug: string;
   outputFile: string;
   since?: Date;
@@ -82,7 +83,7 @@ interface JiraExportPayload {
   metadata: {
     exportedAt: string;
     source: "jira";
-    projectKey: string;
+    projectKey: string | null;
     organizationSlug: string;
     since: string | null;
     version: string;
@@ -174,23 +175,54 @@ async function sleep(ms: number): Promise<void> {
 async function jiraApi<T>(
   domain: string,
   endpoint: string,
+  body?: object,
   retries = 3
 ): Promise<T> {
   const auth = getAuthHeader();
   const url = `https://${domain}/rest/api/3/${endpoint}`;
 
   for (let attempt = 1; attempt <= retries; attempt++) {
+    let rawOutput = "";
     try {
-      const cmd = `curl -s -X GET -H "Authorization: Basic ${auth}" -H "Content-Type: application/json" "${url}"`;
-      const result = execSync(cmd, {
+      let cmd: string;
+      if (body) {
+        const bodyJson = JSON.stringify(body).replace(/'/g, "'\\''");
+        cmd = `curl -s -w "\\n%{http_code}" -X POST -H "Authorization: Basic ${auth}" -H "Content-Type: application/json" -d '${bodyJson}' "${url}"`;
+      } else {
+        cmd = `curl -s -w "\\n%{http_code}" -X GET -H "Authorization: Basic ${auth}" -H "Content-Type: application/json" "${url}"`;
+      }
+      rawOutput = execSync(cmd, {
         encoding: "utf-8",
         maxBuffer: 50 * 1024 * 1024,
       });
 
-      const parsed = JSON.parse(result);
+      // curl -w appends the status code on a new line
+      const lastNewline = rawOutput.lastIndexOf("\n");
+      const statusCode = parseInt(rawOutput.slice(lastNewline + 1).trim(), 10);
+      const responseBody = rawOutput.slice(0, lastNewline);
 
-      // Check for error responses
-      if (parsed.errorMessages || parsed.errors) {
+      // Fail fast on auth errors — retrying won't help
+      if (statusCode === 401 || statusCode === 403) {
+        throw new Error(
+          `Authentication failed (HTTP ${statusCode}). Check JIRA_EMAIL and JIRA_API_TOKEN.\nResponse: ${responseBody.slice(0, 200)}`
+        );
+      }
+
+      // Rate limited — respect Retry-After if present, otherwise back off hard
+      if (statusCode === 429) {
+        const waitTime = Math.pow(2, attempt) * 5000;
+        console.warn(`Rate limited (429), waiting ${waitTime / 1000}s before retry ${attempt + 1}/${retries}...`);
+        await sleep(waitTime);
+        continue;
+      }
+
+      if (statusCode >= 500) {
+        throw new Error(`Jira server error (HTTP ${statusCode}): ${responseBody.slice(0, 200)}`);
+      }
+
+      const parsed = JSON.parse(responseBody);
+
+      if (parsed.errorMessages?.length || parsed.errors) {
         throw new Error(
           `Jira API error: ${JSON.stringify(parsed.errorMessages || parsed.errors)}`
         );
@@ -198,12 +230,27 @@ async function jiraApi<T>(
 
       return parsed;
     } catch (error: any) {
+      // Don't retry auth failures
+      if (error.message?.includes("Authentication failed")) throw error;
+
       if (attempt === retries) {
+        console.error(`Failed after ${retries} attempts for ${endpoint}`);
         throw error;
       }
 
-      const waitTime = Math.pow(2, attempt) * 500;
-      console.log(`API error, retrying in ${waitTime / 1000}s...`);
+      const isNetwork =
+        error.message?.includes("connection refused") ||
+        error.message?.includes("connection reset") ||
+        error.message?.includes("Could not resolve host");
+
+      const waitTime = isNetwork
+        ? Math.pow(2, attempt) * 2000
+        : Math.pow(2, attempt) * 500;
+
+      console.warn(
+        `Request failed (attempt ${attempt}/${retries}): ${error.message?.slice(0, 120) ?? "unknown error"}`
+      );
+      console.warn(`Retrying in ${waitTime / 1000}s...`);
       await sleep(waitTime);
     }
   }
@@ -220,29 +267,51 @@ async function exportJiraIssues(
 ): Promise<JiraExportPayload["issues"]> {
   const { domain, projectKey, since, maxResults } = options;
 
-  console.log(`Fetching issues from Jira project ${projectKey}...`);
+  console.log(
+    projectKey
+      ? `Fetching issues from Jira project ${projectKey}...`
+      : `Fetching all Jira issues...`
+  );
 
   // Build JQL query
-  let jql = `project = ${projectKey}`;
-  if (since) {
-    jql += ` AND created >= "${since.toISOString().split("T")[0]}"`;
-  }
-  jql += ` ORDER BY created DESC`;
+  const conditions: string[] = [];
+  if (projectKey) conditions.push(`project = ${projectKey}`);
+  if (since) conditions.push(`created >= "${since.toISOString().split("T")[0]}"`);
+  const jql = (conditions.length > 0 ? conditions.join(" AND ") + " " : "") + "ORDER BY created DESC";
 
-  const endpoint = `search?jql=${encodeURIComponent(jql)}&maxResults=${maxResults}&fields=summary,status,issuetype,creator,assignee,reporter,created,updated,resolutiondate,labels,priority,customfield_10016`;
+  const fields = ["summary", "status", "issuetype", "creator", "assignee", "reporter", "created", "updated", "resolutiondate", "labels", "priority", "customfield_10016"];
+  const pageSize = 100;
+  const allIssues: JiraIssue[] = [];
+  let startAt = 0;
+  let total = 0;
 
-  const response = await jiraApi<{
-    issues: JiraIssue[];
-    total: number;
-  }>(domain, endpoint);
+  do {
+    const requestBody = { jql, maxResults: pageSize, startAt, fields };
+    const response = await jiraApi<{ issues: JiraIssue[]; total: number }>(
+      domain, "search/jql", requestBody
+    );
 
-  console.log(
-    `Found ${response.total} issues, processing ${response.issues.length}...`
-  );
+    if (startAt === 0) {
+      total = response.total;
+      console.log(`Found ${total} issues, fetching...`);
+    }
+
+    allIssues.push(...response.issues);
+    startAt += response.issues.length;
+
+    if (allIssues.length % 500 === 0 && allIssues.length > 0) {
+      console.log(`  Fetched ${allIssues.length}/${total}...`);
+    }
+
+    if (allIssues.length >= maxResults) break;
+    await sleep(100);
+  } while (startAt < total);
+
+  console.log(`Processing ${allIssues.length} issues...`);
 
   const exported: JiraExportPayload["issues"] = [];
 
-  for (const issue of response.issues) {
+  for (const issue of allIssues) {
     const state = mapJiraState(issue.fields.status.statusCategory.key);
 
     exported.push({
@@ -285,13 +354,13 @@ async function exportJiraIssues(
 async function main() {
   const args = process.argv.slice(2);
 
-  if (args.length < 2) {
-    console.log("Usage: npm run export:jira -- <domain> <project-key> [options]");
+  if (args.length < 1 || args[0].startsWith("--")) {
+    console.log("Usage: npm run export:jira -- <domain> [project-key] [options]");
     console.log("");
     console.log("Options:");
     console.log("  --output=<file>      Output file (default: jira-data.json)");
     console.log(
-      "  --org-slug=<slug>    Organization slug (default: project key)"
+      "  --org-slug=<slug>    Organization slug (default: project key or domain)"
     );
     console.log("  --since=<date>       Only export after date (YYYY-MM-DD)");
     console.log("  --max-results=<n>    Max issues to fetch (default: 1000)");
@@ -299,22 +368,29 @@ async function main() {
     console.log("Authentication:");
     console.log("  Set JIRA_EMAIL and JIRA_API_TOKEN environment variables");
     console.log("");
-    console.log("Example:");
+    console.log("Examples:");
     console.log(
       "  npm run export:jira -- mycompany.atlassian.net PROJ --output=jira-data.json"
+    );
+    console.log(
+      "  npm run export:jira -- mycompany.atlassian.net --since=2025-01-01"
     );
     process.exit(1);
   }
 
-  const domain = args[0];
-  const projectKey = args[1];
+  // Separate positional args from flags
+  const positionalArgs = args.filter((a) => !a.startsWith("--"));
+  const flagArgs = args.filter((a) => a.startsWith("--"));
+
+  const domain = positionalArgs[0];
+  const projectKey = positionalArgs[1]; // optional
 
   let outputFile = "jira-data.json";
-  let orgSlug = projectKey.toLowerCase();
+  let orgSlug = (projectKey || domain.split(".")[0]).toLowerCase();
   let since: Date | undefined;
   let maxResults = 1000;
 
-  for (const arg of args.slice(2)) {
+  for (const arg of flagArgs) {
     if (arg.startsWith("--output=")) {
       outputFile = arg.replace("--output=", "");
     }
@@ -330,7 +406,7 @@ async function main() {
   }
 
   console.log("=".repeat(60));
-  console.log(`Exporting Jira issues: ${domain}/${projectKey}`);
+  console.log(`Exporting Jira issues: ${domain}${projectKey ? `/${projectKey}` : ""}`);
   console.log(`Organization: ${orgSlug}`);
   console.log(`Since: ${since?.toISOString() || "all time"}`);
   console.log(`Max results: ${maxResults}`);
@@ -354,7 +430,7 @@ async function main() {
       metadata: {
         exportedAt: new Date().toISOString(),
         source: "jira",
-        projectKey,
+        projectKey: projectKey || null,
         organizationSlug: orgSlug,
         since: since?.toISOString() || null,
         version: "1.0.0",

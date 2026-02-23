@@ -56,6 +56,14 @@ interface GitHubCommit {
   stats?: { additions: number; deletions: number };
 }
 
+interface GitHubReview {
+  id: number;
+  user: { login: string; id: number } | null;
+  state: string;
+  submitted_at: string;
+  body: string;
+}
+
 interface GitHubIssue {
   number: number;
   title: string;
@@ -147,6 +155,13 @@ interface ExportPayload {
     metadata: {
       labels: string[];
     };
+  }>;
+  reviews: Array<{
+    prExternalId: string;
+    reviewerUsername: string | null;
+    state: "approved" | "changes_requested" | "commented" | "dismissed";
+    submittedAt: string;
+    body: string | null;
   }>;
 }
 
@@ -490,7 +505,7 @@ function calculateCycleTimeHours(
 
 async function exportPullRequests(
   options: ExportOptions
-): Promise<ExportPayload["pullRequests"]> {
+): Promise<{ pullRequests: ExportPayload["pullRequests"]; reviews: ExportPayload["reviews"] }> {
   const { owner, repo, since, maxPages } = options;
 
   console.log(`Fetching PRs from ${owner}/${repo}...`);
@@ -517,7 +532,11 @@ async function exportPullRequests(
   );
   const detailsMap = await fetchPrDetailsBatch(owner, repo, prsNeedingDetails);
 
-  const exported: ExportPayload["pullRequests"] = [];
+  const exportedPRs: ExportPayload["pullRequests"] = [];
+  const exportedReviews: ExportPayload["reviews"] = [];
+  const validStates = new Set(["approved", "changes_requested", "commented", "dismissed"]);
+
+  console.log(`Fetching reviews for ${filteredPrs.length} PRs...`);
 
   for (const pr of filteredPrs) {
     // Skip PRs from bots
@@ -531,8 +550,35 @@ async function exportPullRequests(
     const additions = details?.additions ?? pr.additions ?? 0;
     const deletions = details?.deletions ?? pr.deletions ?? 0;
 
-    exported.push({
-      externalId: String(pr.number),
+    // Fetch reviews for this PR
+    let reviews: GitHubReview[] = [];
+    try {
+      reviews = await ghApi<GitHubReview[]>(
+        `repos/${owner}/${repo}/pulls/${pr.number}/reviews`
+      );
+      await sleep(50);
+    } catch {
+      // Skip reviews for this PR if fetch fails
+    }
+
+    const prId = String(pr.number);
+
+    for (const review of reviews) {
+      if (review.user && isBot(review.user.login)) continue;
+      const reviewState = review.state.toLowerCase();
+      if (!validStates.has(reviewState)) continue; // skip PENDING
+
+      exportedReviews.push({
+        prExternalId: prId,
+        reviewerUsername: review.user?.login || null,
+        state: reviewState as ExportPayload["reviews"][number]["state"],
+        submittedAt: review.submitted_at,
+        body: review.body || null,
+      });
+    }
+
+    exportedPRs.push({
+      externalId: prId,
       externalUrl: pr.html_url,
       title: pr.title,
       authorUsername: pr.user?.login || null,
@@ -543,7 +589,10 @@ async function exportPullRequests(
       additions,
       deletions,
       commitsCount: pr.commits,
-      reviewsCount: pr.review_comments,
+      reviewsCount: reviews.filter((r) => {
+        const s = r.state.toLowerCase();
+        return validStates.has(s);
+      }).length,
       cycleTimeHours: calculateCycleTimeHours(pr.created_at, pr.merged_at),
       metadata: {
         labels: pr.labels.map((l) => l.name),
@@ -553,8 +602,8 @@ async function exportPullRequests(
     });
   }
 
-  console.log(`Exported ${exported.length} PRs`);
-  return exported;
+  console.log(`Exported ${exportedPRs.length} PRs, ${exportedReviews.length} reviews`);
+  return { pullRequests: exportedPRs, reviews: exportedReviews };
 }
 
 async function exportCommits(
@@ -789,6 +838,7 @@ async function main() {
     const allPullRequests: ExportPayload["pullRequests"] = [];
     const allCommits: ExportPayload["commits"] = [];
     const allIssues: ExportPayload["issues"] = [];
+    const allReviews: ExportPayload["reviews"] = [];
     const multiRepo = repos.length > 1;
 
     for (const repo of repos) {
@@ -807,10 +857,11 @@ async function main() {
       };
 
       let prs: ExportPayload["pullRequests"] = [];
+      let reviews: ExportPayload["reviews"] = [];
       let commits: ExportPayload["commits"] = [];
       let issues: ExportPayload["issues"] = [];
       try {
-        prs = await exportPullRequests(options);
+        ({ pullRequests: prs, reviews } = await exportPullRequests(options));
         commits = await exportCommits(options);
         issues = await exportIssues(options);
       } catch (err: any) {
@@ -825,12 +876,14 @@ async function main() {
       // Prefix externalId with repo name to avoid collisions across repos
       if (multiRepo) {
         for (const pr of prs) pr.externalId = `${repo}/${pr.externalId}`;
+        for (const review of reviews) review.prExternalId = `${repo}/${review.prExternalId}`;
         for (const issue of issues) issue.externalId = `${repo}/${issue.externalId}`;
       }
 
       allPullRequests.push(...prs);
       allCommits.push(...commits);
       allIssues.push(...issues);
+      allReviews.push(...reviews);
     }
 
     const baseOptions: ExportOptions = {
@@ -862,6 +915,7 @@ async function main() {
       pullRequests: allPullRequests,
       commits: allCommits,
       issues: allIssues,
+      reviews: allReviews,
     };
 
     // Write to file
@@ -874,6 +928,7 @@ async function main() {
     console.log(`  Repos:         ${repos.length}`);
     console.log(`  Contributors:  ${contributors.length}`);
     console.log(`  Pull Requests: ${allPullRequests.length}`);
+    console.log(`  Reviews:       ${allReviews.length}`);
     console.log(`  Commits:       ${allCommits.length}`);
     console.log(`  Issues:        ${allIssues.length}`);
     console.log("");
