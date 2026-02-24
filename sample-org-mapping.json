@@ -1,0 +1,56 @@
+{
+  "meta": { "organization": "acme" },
+  "organization": { "name": "Acme Corp", "slug": "acme" },
+  "groups": [
+    { "slug": "engineering",       "name": "Engineering",        "parentSlug": null },
+    { "slug": "platform",          "name": "Platform",           "parentSlug": "engineering" },
+    { "slug": "infra",             "name": "Infrastructure",     "parentSlug": "platform" },
+    { "slug": "developer-tools",   "name": "Developer Tools",    "parentSlug": "platform" },
+    { "slug": "product-eng",       "name": "Product Engineering","parentSlug": "engineering" },
+    { "slug": "frontend",          "name": "Frontend",           "parentSlug": "product-eng" },
+    { "slug": "backend",           "name": "Backend",            "parentSlug": "product-eng" },
+    { "slug": "ml",                "name": "Machine Learning",   "parentSlug": "engineering" }
+  ],
+  "users": [
+    {
+      "externalUsername": "jdoe",
+      "externalId": "1001",
+      "displayName": "Jane Doe",
+      "email": "jane.doe@acme.com",
+      "avatarUrl": null,
+      "groupSlugs": ["frontend"]
+    },
+    {
+      "externalUsername": "asmith",
+      "externalId": "1002",
+      "displayName": "Alice Smith",
+      "email": "alice.smith@acme.com",
+      "avatarUrl": null,
+      "groupSlugs": ["backend"]
+    },
+    {
+      "externalUsername": "bjones",
+      "externalId": "1003",
+      "displayName": "Bob Jones",
+      "email": "bob.jones@acme.com",
+      "avatarUrl": null,
+      "groupSlugs": ["infra"]
+    },
+    {
+      "externalUsername": "cwang",
+      "externalId": null,
+      "displayName": "Carol Wang",
+      "email": "carol.wang@acme.com",
+      "avatarUrl": null,
+      "groupSlugs": ["ml"]
+    },
+    {
+      "externalUsername": "dlee",
+      "externalId": "1005",
+      "displayName": "David Lee",
+      "email": "david.lee@acme.com",
+      "avatarUrl": null,
+      "groupSlugs": []
+    }
+  ]
+}
