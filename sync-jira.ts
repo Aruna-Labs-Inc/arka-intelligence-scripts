@@ -282,30 +282,33 @@ async function exportJiraIssues(
   const fields = ["summary", "status", "issuetype", "creator", "assignee", "reporter", "created", "updated", "resolutiondate", "labels", "priority", "customfield_10016"];
   const pageSize = 100;
   const allIssues: JiraIssue[] = [];
-  let startAt = 0;
-  let total = 0;
+  let nextPageToken: string | undefined;
+  let total: number | undefined;
 
   do {
-    const requestBody = { jql, maxResults: pageSize, startAt, fields };
-    const response = await jiraApi<{ issues: JiraIssue[]; total: number }>(
+    const requestBody: Record<string, unknown> = { jql, maxResults: pageSize, fields };
+    if (nextPageToken) requestBody.nextPageToken = nextPageToken;
+
+    const response = await jiraApi<{ issues: JiraIssue[]; total?: number; nextPageToken?: string }>(
       domain, "search/jql", requestBody
     );
 
-    if (startAt === 0) {
+    if (allIssues.length === 0) {
       total = response.total;
-      console.log(`Found ${total} issues, fetching...`);
+      console.log(`Found ${total ?? "unknown number of"} issues, fetching...`);
     }
 
     allIssues.push(...response.issues);
-    startAt += response.issues.length;
+    nextPageToken = response.nextPageToken;
 
     if (allIssues.length % 500 === 0 && allIssues.length > 0) {
-      console.log(`  Fetched ${allIssues.length}/${total}...`);
+      console.log(`  Fetched ${allIssues.length}${total != null ? `/${total}` : ""}...`);
     }
 
     if (allIssues.length >= maxResults) break;
+    if (!nextPageToken) break;
     await sleep(100);
-  } while (startAt < total);
+  } while (true);
 
   console.log(`Processing ${allIssues.length} issues...`);
 
