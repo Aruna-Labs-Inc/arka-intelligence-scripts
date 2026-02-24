@@ -31,8 +31,9 @@ npm install
 export JIRA_EMAIL="your-email@company.com"
 export JIRA_API_TOKEN="your-api-token"
 
-# 2. Export Jira issues
+# 2. Export Jira issues (project key optional — omit to export all projects)
 npm run export:jira -- mycompany.atlassian.net PROJ
+npm run export:jira -- mycompany.atlassian.net --since=2025-01-01
 
 # 3. Upload jira-data.json to Arka Intelligence
 ```
@@ -68,7 +69,7 @@ npm run export:jira -- domain [project-key] [options]
 
 Options:
   --output=<file>       Output file (default: jira-data.json)
-  --org-slug=<slug>     Organization slug (default: project key)
+  --org-slug=<slug>     Organization slug (default: domain prefix)
   --since=YYYY-MM-DD    Only export issues created after date
   --max-results=<n>     Max issues to fetch (default: 1000)
 
@@ -84,7 +85,8 @@ Examples:
 
 **GitHub Export** (`arka-data.json`):
 - **Pull Requests** - State, author, lines changed, cycle time, AI tool detection
-- **Commits** - Author, message, changes, AI assistance (Cursor, Copilot, Claude, ChatGPT)
+- **Commits** - Author, message, changes, AI assistance (Cursor, Copilot, Claude, ChatGPT); linked to their PR via `prExternalId` (null for direct-push commits)
+- **Reviews** - Reviewer, state (approved/changes requested/commented), submitted date
 - **Issues** (optional) - State, author, assignee, cycle time
 - **Contributors** - GitHub username (`externalUsername`), display name, email, avatar (bots excluded)
 
@@ -142,7 +144,8 @@ Organization
   └── Repository
        ├── Contributors (linked by externalUsername)
        ├── Pull Requests (→ authorUsername)
-       ├── Commits (→ authorUsername)
+       │    ├── Commits (→ prExternalId, authorUsername)
+       │    └── Reviews (→ prExternalId, reviewerUsername)
        └── Issues (→ authorUsername, assigneeUsername)
 ```
 
