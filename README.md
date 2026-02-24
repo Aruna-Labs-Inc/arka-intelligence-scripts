@@ -15,6 +15,8 @@ gh auth login
 
 # 2. Export GitHub data (PRs, commits, issues) — all repos by default
 npm run export -- your-org
+# Or multiple orgs at once:
+npm run export -- org1 org2
 
 # 3. Upload arka-data.json to Arka Intelligence
 ```
@@ -42,17 +44,19 @@ npm run export:jira -- mycompany.atlassian.net PROJ
 ### GitHub Export
 
 ```bash
-npm run export -- owner [repo] [options]
+npm run export -- <owner> [owner2 ...] [options]
 
 Options:
+  --repo=<name>        Only export a specific repo (single owner only)
   --output=<file>      Output file (default: arka-data.json)
-  --org-slug=<slug>    Organization slug (default: repo owner)
+  --org-slug=<slug>    Organization slug (default: first owner)
   --since=YYYY-MM-DD   Only export after date
   --max-pages=<n>      Max pages per repo (default: 50)
 
 Examples:
   npm run export -- your-org                        # all repos
-  npm run export -- your-org continue               # single repo
+  npm run export -- your-org --repo=myrepo          # single repo
+  npm run export -- org1 org2 org3                  # multiple orgs
   npm run export -- your-org --since=2025-01-01
   npm run export -- your-org --max-pages=100
 ```

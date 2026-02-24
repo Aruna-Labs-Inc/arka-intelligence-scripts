@@ -782,7 +782,7 @@ async function exportContributors(
   pullRequests: ExportPayload["pullRequests"],
   commits: ExportPayload["commits"],
   issues: ExportPayload["issues"],
-  options: ExportOptions
+  owners: string[]
 ): Promise<ExportPayload["contributors"]> {
   console.log("Identifying contributors...");
 
@@ -800,8 +800,13 @@ async function exportContributors(
     if (issue.assigneeUsername) usernames.add(issue.assigneeUsername);
   }
 
-  console.log(`Fetching org member emails for ${options.owner}...`);
-  const orgEmailMap = await fetchOrgMemberEmailMap(options.owner);
+  // Fetch and merge email maps for all orgs
+  const orgEmailMap = new Map<string, string>();
+  for (const owner of owners) {
+    console.log(`Fetching org member emails for ${owner}...`);
+    const map = await fetchOrgMemberEmailMap(owner);
+    for (const [login, email] of map) orgEmailMap.set(login, email);
+  }
   console.log(`Found emails for ${orgEmailMap.size} org members`);
 
   console.log(`Fetching profiles for ${usernames.size} contributors...`);
@@ -839,30 +844,35 @@ async function main() {
 
   if (positional.length < 1) {
     console.log("Usage:");
-    console.log("  npm run export -- <owner> [repo] [options]");
+    console.log("  npm run export -- <owner> [owner2 ...] [options]");
     console.log("");
     console.log("Options:");
+    console.log("  --repo=<name>        Only export a specific repo (single owner only)");
     console.log("  --output=<file>      Output file (default: arka-data.json)");
-    console.log("  --org-slug=<slug>    Organization slug (default: repo owner)");
+    console.log("  --org-slug=<slug>    Organization slug (default: first owner)");
     console.log("  --since=<date>       Only export after date (YYYY-MM-DD)");
     console.log("  --max-pages=<n>      Max pages per repo (default: 50)");
     console.log("");
     console.log("Examples:");
-    console.log("  npm run export -- myorg                       # all repos");
-    console.log("  npm run export -- myorg myrepo                # single repo");
+    console.log("  npm run export -- myorg                        # all repos");
+    console.log("  npm run export -- myorg --repo=myrepo          # single repo");
+    console.log("  npm run export -- org1 org2 org3               # multiple orgs");
     console.log("  npm run export -- myorg --since=2025-01-01");
     process.exit(1);
   }
 
-  const owner = positional[0];
-  const singleRepo = positional[1] ?? null;
+  const owners = positional;
 
   let outputFile = "arka-data.json";
-  let orgSlug = owner;
+  let orgSlug = owners[0];
+  let singleRepo: string | null = null;
   let since: Date | undefined;
   let maxPages = 50;
 
   for (const arg of args) {
+    if (arg.startsWith("--repo=")) {
+      singleRepo = arg.replace("--repo=", "");
+    }
     if (arg.startsWith("--output=")) {
       outputFile = arg.replace("--output=", "");
     }
@@ -877,24 +887,10 @@ async function main() {
     }
   }
 
-  // Determine repos to process
-  let repos: string[];
-  if (singleRepo) {
-    repos = [singleRepo];
-  } else {
-    repos = await fetchAllRepos(owner);
-    if (repos.length === 0) {
-      console.error("No repos found.");
-      process.exit(1);
-    }
-  }
+  const multiOwner = owners.length > 1;
 
   console.log("=".repeat(60));
-  if (repos.length > 1) {
-    console.log(`Exporting GitHub data: ${owner} (${repos.length} repos)`);
-  } else {
-    console.log(`Exporting GitHub data: ${owner}/${repos[0]}`);
-  }
+  console.log(`Exporting GitHub data: ${owners.join(", ")}`);
   console.log(`Organization: ${orgSlug}`);
   console.log(`Since: ${since?.toISOString() || "all time"}`);
   console.log(`Max pages per repo: ${maxPages}`);
@@ -907,80 +903,96 @@ async function main() {
     const allCommits: ExportPayload["commits"] = [];
     const allIssues: ExportPayload["issues"] = [];
     const allReviews: ExportPayload["reviews"] = [];
-    const multiRepo = repos.length > 1;
 
-    for (const repo of repos) {
-      if (multiRepo) {
+    for (const owner of owners) {
+      if (multiOwner) {
         console.log("");
-        console.log(`--- Repo: ${repo} ---`);
+        console.log(`=== Org: ${owner} ===`);
       }
 
-      const options: ExportOptions = {
-        owner,
-        repo,
-        orgSlug,
-        outputFile,
-        since,
-        maxPages,
-      };
-
-      let prs: ExportPayload["pullRequests"] = [];
-      let reviews: ExportPayload["reviews"] = [];
-      let commits: ExportPayload["commits"] = [];
-      let issues: ExportPayload["issues"] = [];
-      try {
-        let prCommits: ExportPayload["commits"] = [];
-        ({ pullRequests: prs, reviews, commits: prCommits } = await exportPullRequests(options));
-        const seenShas = new Set(prCommits.map((c) => c.sha));
-        const directCommits = await exportCommits(options, seenShas);
-        commits = [...prCommits, ...directCommits];
-        issues = await exportIssues(options);
-      } catch (err: any) {
-        const out = err?.stdout?.toString() || err?.message || "";
-        if (out.includes("409") || out.includes("Git Repository is empty")) {
-          console.log(`Skipping ${repo}: repository is empty.`);
+      // Determine repos for this owner
+      let repos: string[];
+      if (singleRepo) {
+        repos = [singleRepo];
+      } else {
+        repos = await fetchAllRepos(owner);
+        if (repos.length === 0) {
+          console.log(`No repos found for ${owner}, skipping.`);
           continue;
         }
-        throw err;
       }
 
-      // Prefix externalId with repo name to avoid collisions across repos
-      if (multiRepo) {
-        for (const pr of prs) pr.externalId = `${repo}/${pr.externalId}`;
-        for (const review of reviews) review.prExternalId = `${repo}/${review.prExternalId}`;
-        for (const issue of issues) issue.externalId = `${repo}/${issue.externalId}`;
-        for (const c of commits) {
-          if (c.prExternalId) c.prExternalId = `${repo}/${c.prExternalId}`;
+      const multiRepo = repos.length > 1;
+
+      for (const repo of repos) {
+        if (multiRepo || multiOwner) {
+          console.log("");
+          console.log(`--- Repo: ${owner}/${repo} ---`);
         }
+
+        const options: ExportOptions = {
+          owner,
+          repo,
+          orgSlug,
+          outputFile,
+          since,
+          maxPages,
+        };
+
+        let prs: ExportPayload["pullRequests"] = [];
+        let reviews: ExportPayload["reviews"] = [];
+        let commits: ExportPayload["commits"] = [];
+        let issues: ExportPayload["issues"] = [];
+        try {
+          let prCommits: ExportPayload["commits"] = [];
+          ({ pullRequests: prs, reviews, commits: prCommits } = await exportPullRequests(options));
+          const seenShas = new Set(prCommits.map((c) => c.sha));
+          const directCommits = await exportCommits(options, seenShas);
+          commits = [...prCommits, ...directCommits];
+          issues = await exportIssues(options);
+        } catch (err: any) {
+          const out = err?.stdout?.toString() || err?.message || "";
+          if (out.includes("409") || out.includes("Git Repository is empty")) {
+            console.log(`Skipping ${owner}/${repo}: repository is empty.`);
+            continue;
+          }
+          throw err;
+        }
+
+        // Prefix externalIds to avoid collisions across repos/orgs
+        if (multiOwner || multiRepo) {
+          const prefix = multiOwner ? `${owner}/${repo}` : repo;
+          for (const pr of prs) pr.externalId = `${prefix}/${pr.externalId}`;
+          for (const review of reviews) review.prExternalId = `${prefix}/${review.prExternalId}`;
+          for (const issue of issues) issue.externalId = `${prefix}/${issue.externalId}`;
+          for (const c of commits) {
+            if (c.prExternalId) c.prExternalId = `${prefix}/${c.prExternalId}`;
+          }
+        }
+
+        allPullRequests.push(...prs);
+        allCommits.push(...commits);
+        allIssues.push(...issues);
+        allReviews.push(...reviews);
       }
-
-      allPullRequests.push(...prs);
-      allCommits.push(...commits);
-      allIssues.push(...issues);
-      allReviews.push(...reviews);
     }
-
-    const baseOptions: ExportOptions = {
-      owner,
-      repo: repos[0],
-      orgSlug,
-      outputFile,
-      since,
-      maxPages,
-    };
 
     const contributors = await exportContributors(
       allPullRequests,
       allCommits,
       allIssues,
-      baseOptions
+      owners
     );
 
     // Build payload
+    const repoLabel = singleRepo
+      ? owners.map((o) => `${o}/${singleRepo}`).join(", ")
+      : owners.map((o) => `${o}/*`).join(", ");
+
     const payload: ExportPayload = {
       metadata: {
         exportedAt: new Date().toISOString(),
-        repository: multiRepo ? `${owner}/*` : `${owner}/${repos[0]}`,
+        repository: repoLabel,
         organizationSlug: orgSlug,
         since: since?.toISOString() || null,
         version: "1.0.0",
