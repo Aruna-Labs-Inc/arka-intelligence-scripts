@@ -50,6 +50,7 @@ interface GitHubCommit {
   html_url: string;
   commit: {
     message: string;
+    author: { date: string } | null;
     committer: { date: string } | null;
   };
   author: { login: string; id: number; avatar_url: string } | null;
@@ -637,7 +638,7 @@ async function exportCommits(
       externalUrl: c.html_url,
       authorUsername: c.author?.login || null,
       message: c.commit.message,
-      committedAt: c.commit.committer?.date || new Date().toISOString(),
+      committedAt: c.commit.author?.date || c.commit.committer?.date || new Date().toISOString(),
       additions: c.stats?.additions || null,
       deletions: c.stats?.deletions || null,
       isAiAssisted: aiDetection.isAiAssisted,

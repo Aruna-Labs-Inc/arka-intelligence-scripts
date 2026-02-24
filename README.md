@@ -60,7 +60,7 @@ Examples:
 ### Jira Export
 
 ```bash
-npm run export:jira -- domain project-key [options]
+npm run export:jira -- domain [project-key] [options]
 
 Options:
   --output=<file>       Output file (default: jira-data.json)
@@ -82,7 +82,7 @@ Examples:
 - **Pull Requests** - State, author, lines changed, cycle time, AI tool detection
 - **Commits** - Author, message, changes, AI assistance (Cursor, Copilot, Claude, ChatGPT)
 - **Issues** (optional) - State, author, assignee, cycle time
-- **Contributors** - GitHub username, display name, email, avatar (bots excluded)
+- **Contributors** - GitHub username (`externalUsername`), display name, email, avatar (bots excluded)
 
 **Jira Export** (`jira-data.json`):
 - **Issues** - Issue type, state, priority, story points, cycle time
@@ -95,58 +95,57 @@ See `example-output.json` for GitHub format.
 
 ## Organizational Structure (Required for Team Analytics)
 
-Create a separate JSON file with team structure from your HR system (Workday, BambooHR, etc.):
+Create a separate JSON file mapping users to groups (teams). Export this from your HR system (Workday, BambooHR, etc.) and upload it to Arka Intelligence separately.
 
 ```json
 {
-  "organizationSlug": "myorg",
-  "teams": [
+  "meta": { "organization": "myorg" },
+  "organization": { "name": "My Company", "slug": "myorg" },
+  "groups": [
+    { "slug": "engineering",  "name": "Engineering",  "parentSlug": null },
+    { "slug": "frontend",     "name": "Frontend",     "parentSlug": "engineering" },
+    { "slug": "backend",      "name": "Backend",      "parentSlug": "engineering" }
+  ],
+  "users": [
     {
-      "teamId": "engineering",
-      "teamName": "Engineering",
-      "parentTeamId": null,
-      "members": [
-        {
-          "githubUsername": "johndoe",  // MUST match GitHub export
-          "email": "john.doe@company.com",
-          "role": "Engineer",
-          "managerId": "janedoe"  // GitHub username of manager
-        }
-      ]
+      "externalUsername": "johndoe",
+      "externalId": "1001",
+      "displayName": "John Doe",
+      "email": "john.doe@company.com",
+      "avatarUrl": null,
+      "groupSlugs": ["frontend"]
     }
   ]
 }
 ```
 
 **Key Fields:**
-- `githubUsername` - Links to GitHub export (case-sensitive)
-- `managerId` - Creates reporting hierarchy (null for top-level)
-- `parentTeamId` - Creates nested teams (null for root teams)
+- `externalUsername` - Must match GitHub username (case-sensitive)
+- `groupSlugs` - List of group slugs the user belongs to (empty array if ungrouped)
+- `parentSlug` - Creates nested group hierarchy (null for root groups)
 
 **Export from Workday:**
-1. Export: Employee Name, Email, Manager, Department, Title
+1. Export: Employee Name, Email, Department
 2. Map emails to GitHub usernames
 3. Structure as JSON above
 
-See `example-org-structure.json` for complete example.
+See `sample-org-mapping.json` for a complete example.
 
 ## Data Relationships
 
 ```
 Organization
   └── Repository
-       ├── Contributors (linked by githubUsername)
+       ├── Contributors (linked by externalUsername)
        ├── Pull Requests (→ authorUsername)
        ├── Commits (→ authorUsername)
        └── Issues (→ authorUsername, assigneeUsername)
 ```
 
 **Import Flow:**
-1. Create organization from `organizationSlug`
-2. Create repository from `metadata.repository`
-3. Create contributors
-4. Link PRs/commits/issues to contributors by matching usernames
-5. Create teams and link members to contributors
+1. Upload GitHub export (`arka-data.json`) — PRs, commits, issues, contributors
+2. Upload Jira export (`jira-data.json`) — issues
+3. Upload org mapping file — links users to groups
 
 ## Troubleshooting
 
