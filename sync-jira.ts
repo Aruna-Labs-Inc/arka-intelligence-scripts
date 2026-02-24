@@ -295,7 +295,14 @@ async function exportJiraIssues(
 
     if (allIssues.length === 0) {
       total = response.total;
-      console.log(`Found ${total ?? "unknown number of"} issues, fetching...`);
+      if (response.issues.length === 0) {
+        console.warn("Warning: API returned 0 issues. This usually means:");
+        console.warn("  - The API token lacks permission to search across all projects");
+        console.warn("  - Try passing a project key: npm run export:jira -- <domain> <PROJECT>");
+        console.warn(`  - JQL used: ${jql}`);
+      } else {
+        console.log(`Found ${total ?? "unknown number of"} issues, fetching...`);
+      }
     }
 
     allIssues.push(...response.issues);
