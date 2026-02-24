@@ -133,6 +133,7 @@ interface ExportPayload {
   commits: Array<{
     sha: string;
     externalUrl: string;
+    prExternalId: string | null;
     authorUsername: string | null;
     message: string;
     committedAt: string;
@@ -419,13 +420,27 @@ async function fetchAllRepos(owner: string): Promise<string[]> {
   return names;
 }
 
+interface PrDetails {
+  additions: number;
+  deletions: number;
+  commits: Array<{
+    sha: string;
+    message: string;
+    authorUsername: string | null;
+    authorDate: string;
+    additions: number | null;
+    deletions: number | null;
+  }>;
+}
+
 async function fetchPrDetailsBatch(
   owner: string,
   repo: string,
   prNumbers: number[]
-): Promise<Map<number, { additions: number; deletions: number }>> {
-  const results = new Map<number, { additions: number; deletions: number }>();
-  const batchSize = 100;
+): Promise<Map<number, PrDetails>> {
+  const results = new Map<number, PrDetails>();
+  // Reduced from 100 to keep GraphQL response size manageable when including commits
+  const batchSize = 25;
 
   for (let i = 0; i < prNumbers.length; i += batchSize) {
     const batch = prNumbers.slice(i, i + batchSize);
@@ -433,7 +448,12 @@ async function fetchPrDetailsBatch(
     const prQueries = batch
       .map(
         (num, idx) =>
-          `pr${idx}: pullRequest(number: ${num}) { number additions deletions }`
+          `pr${idx}: pullRequest(number: ${num}) {
+            number additions deletions
+            commits(first: 250) {
+              nodes { commit { oid message author { date user { login } } additions deletions } }
+            }
+          }`
       )
       .join("\n");
 
@@ -456,6 +476,14 @@ async function fetchPrDetailsBatch(
           results.set(pr.number, {
             additions: pr.additions || 0,
             deletions: pr.deletions || 0,
+            commits: (pr.commits?.nodes || []).map((node: any) => ({
+              sha: node.commit.oid,
+              message: node.commit.message,
+              authorUsername: node.commit.author?.user?.login || null,
+              authorDate: node.commit.author?.date || new Date().toISOString(),
+              additions: node.commit.additions ?? null,
+              deletions: node.commit.deletions ?? null,
+            })),
           });
         }
       }
@@ -468,9 +496,24 @@ async function fetchPrDetailsBatch(
           const pr = await ghApi<GitHubPR>(
             `repos/${owner}/${repo}/pulls/${prNum}`
           );
+          // Fetch PR commits via REST as fallback (no per-commit stats available here)
+          const prCommits = await ghApi<Array<{
+            sha: string;
+            html_url: string;
+            commit: { message: string; author: { date: string } | null };
+            author: { login: string } | null;
+          }>>(`repos/${owner}/${repo}/pulls/${prNum}/commits`);
           results.set(prNum, {
             additions: pr.additions || 0,
             deletions: pr.deletions || 0,
+            commits: prCommits.map((c) => ({
+              sha: c.sha,
+              message: c.commit.message,
+              authorUsername: c.author?.login || null,
+              authorDate: c.commit.author?.date || new Date().toISOString(),
+              additions: null,
+              deletions: null,
+            })),
           });
         } catch {
           // Skip if individual fetch fails
@@ -506,7 +549,7 @@ function calculateCycleTimeHours(
 
 async function exportPullRequests(
   options: ExportOptions
-): Promise<{ pullRequests: ExportPayload["pullRequests"]; reviews: ExportPayload["reviews"] }> {
+): Promise<{ pullRequests: ExportPayload["pullRequests"]; reviews: ExportPayload["reviews"]; commits: ExportPayload["commits"] }> {
   const { owner, repo, since, maxPages } = options;
 
   console.log(`Fetching PRs from ${owner}/${repo}...`);
@@ -535,6 +578,7 @@ async function exportPullRequests(
 
   const exportedPRs: ExportPayload["pullRequests"] = [];
   const exportedReviews: ExportPayload["reviews"] = [];
+  const exportedCommits: ExportPayload["commits"] = [];
   const validStates = new Set(["approved", "changes_requested", "commented", "dismissed"]);
 
   console.log(`Fetching reviews for ${filteredPrs.length} PRs...`);
@@ -601,14 +645,34 @@ async function exportPullRequests(
         draft: pr.draft,
       },
     });
+
+    // Collect commits linked to this PR
+    for (const c of details?.commits || []) {
+      if (isBot(c.authorUsername || "")) continue;
+      const aiDetection = detectAiTool(c.message);
+      exportedCommits.push({
+        sha: c.sha,
+        externalUrl: `https://github.com/${owner}/${repo}/commit/${c.sha}`,
+        prExternalId: prId,
+        authorUsername: c.authorUsername,
+        message: c.message,
+        committedAt: c.authorDate,
+        additions: c.additions,
+        deletions: c.deletions,
+        isAiAssisted: aiDetection.isAiAssisted,
+        aiTool: aiDetection.tool,
+        aiModel: aiDetection.model,
+      });
+    }
   }
 
-  console.log(`Exported ${exportedPRs.length} PRs, ${exportedReviews.length} reviews`);
-  return { pullRequests: exportedPRs, reviews: exportedReviews };
+  console.log(`Exported ${exportedPRs.length} PRs, ${exportedReviews.length} reviews, ${exportedCommits.length} PR commits`);
+  return { pullRequests: exportedPRs, reviews: exportedReviews, commits: exportedCommits };
 }
 
 async function exportCommits(
-  options: ExportOptions
+  options: ExportOptions,
+  seenShas: Set<string>
 ): Promise<ExportPayload["commits"]> {
   const { owner, repo, since, maxPages } = options;
 
@@ -628,6 +692,8 @@ async function exportCommits(
   const exported: ExportPayload["commits"] = [];
 
   for (const c of commits) {
+    // Skip commits already captured via a PR
+    if (seenShas.has(c.sha)) continue;
     // Skip commits from bots
     if (c.author?.login && isBot(c.author.login)) continue;
 
@@ -636,6 +702,7 @@ async function exportCommits(
     exported.push({
       sha: c.sha,
       externalUrl: c.html_url,
+      prExternalId: null,
       authorUsername: c.author?.login || null,
       message: c.commit.message,
       committedAt: c.commit.author?.date || c.commit.committer?.date || new Date().toISOString(),
@@ -862,8 +929,11 @@ async function main() {
       let commits: ExportPayload["commits"] = [];
       let issues: ExportPayload["issues"] = [];
       try {
-        ({ pullRequests: prs, reviews } = await exportPullRequests(options));
-        commits = await exportCommits(options);
+        let prCommits: ExportPayload["commits"] = [];
+        ({ pullRequests: prs, reviews, commits: prCommits } = await exportPullRequests(options));
+        const seenShas = new Set(prCommits.map((c) => c.sha));
+        const directCommits = await exportCommits(options, seenShas);
+        commits = [...prCommits, ...directCommits];
         issues = await exportIssues(options);
       } catch (err: any) {
         const out = err?.stdout?.toString() || err?.message || "";
@@ -879,6 +949,9 @@ async function main() {
         for (const pr of prs) pr.externalId = `${repo}/${pr.externalId}`;
         for (const review of reviews) review.prExternalId = `${repo}/${review.prExternalId}`;
         for (const issue of issues) issue.externalId = `${repo}/${issue.externalId}`;
+        for (const c of commits) {
+          if (c.prExternalId) c.prExternalId = `${repo}/${c.prExternalId}`;
+        }
       }
 
       allPullRequests.push(...prs);
