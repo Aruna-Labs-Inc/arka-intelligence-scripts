@@ -903,6 +903,7 @@ async function main() {
     const allCommits: ExportPayload["commits"] = [];
     const allIssues: ExportPayload["issues"] = [];
     const allReviews: ExportPayload["reviews"] = [];
+    let totalRepoCount = 0;
 
     for (const owner of owners) {
       if (multiOwner) {
@@ -922,6 +923,7 @@ async function main() {
         }
       }
 
+      totalRepoCount += repos.length;
       const multiRepo = repos.length > 1;
 
       for (const repo of repos) {
@@ -1011,7 +1013,7 @@ async function main() {
     console.log("=".repeat(60));
     console.log("EXPORT COMPLETE");
     console.log("=".repeat(60));
-    console.log(`  Repos:         ${repos.length}`);
+    console.log(`  Repos:         ${totalRepoCount}`);
     console.log(`  Contributors:  ${contributors.length}`);
     console.log(`  Pull Requests: ${allPullRequests.length}`);
     console.log(`  Reviews:       ${allReviews.length}`);
