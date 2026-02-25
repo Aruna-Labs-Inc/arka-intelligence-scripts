@@ -439,8 +439,9 @@ async function fetchPrDetailsBatch(
   prNumbers: number[]
 ): Promise<Map<number, PrDetails>> {
   const results = new Map<number, PrDetails>();
-  // Reduced from 100 to keep GraphQL response size manageable when including commits
-  const batchSize = 25;
+  // Kept small because each PR now includes up to 250 commits worth of data
+  const batchSize = 10;
+  const graphqlRetries = 3;
 
   for (let i = 0; i < prNumbers.length; i += batchSize) {
     const batch = prNumbers.slice(i, i + batchSize);
@@ -458,14 +459,29 @@ async function fetchPrDetailsBatch(
       .join("\n");
 
     const query = `query { repository(owner: "${owner}", name: "${repo}") { ${prQueries} } }`;
+    const cmd = `gh api graphql -f query='${query.replace(/'/g, "'\\''")}'`;
+
+    let result: string | null = null;
+    for (let attempt = 1; attempt <= graphqlRetries; attempt++) {
+      try {
+        result = execSync(cmd, {
+          encoding: "utf-8",
+          maxBuffer: 50 * 1024 * 1024,
+          stdio: ["pipe", "pipe", "pipe"],
+        });
+        break;
+      } catch (error: any) {
+        const msg = (error?.stderr?.toString() || error?.message || "").toLowerCase();
+        const isTransient = msg.includes("502") || msg.includes("503") || msg.includes("504") || msg.includes("timeout");
+        if (!isTransient || attempt === graphqlRetries) break;
+        const waitTime = Math.pow(2, attempt) * 2000;
+        console.warn(`GraphQL batch 502/timeout (attempt ${attempt}/${graphqlRetries}), retrying in ${waitTime / 1000}s...`);
+        await sleep(waitTime);
+      }
+    }
 
     try {
-      const cmd = `gh api graphql -f query='${query.replace(/'/g, "'\\''")}'`;
-      const result = execSync(cmd, {
-        encoding: "utf-8",
-        maxBuffer: 50 * 1024 * 1024,
-        stdio: ["pipe", "pipe", "pipe"],
-      });
+      if (!result) throw new Error("GraphQL request failed after retries");
 
       const data = JSON.parse(result);
       const repoData = data?.data?.repository || {};
@@ -487,9 +503,9 @@ async function fetchPrDetailsBatch(
           });
         }
       }
-    } catch (error) {
-      console.log(
-        `GraphQL batch failed, falling back to individual fetches for ${batch.length} PRs`
+    } catch (error: any) {
+      console.warn(
+        `GraphQL batch failed, falling back to individual fetches for ${batch.length} PRs. Reason: ${error?.message?.slice(0, 80) ?? "unknown"}`
       );
       for (const prNum of batch) {
         try {
@@ -515,6 +531,7 @@ async function fetchPrDetailsBatch(
               deletions: null,
             })),
           });
+          await sleep(100);
         } catch {
           // Skip if individual fetch fails
         }
@@ -522,7 +539,7 @@ async function fetchPrDetailsBatch(
     }
 
     if (i + batchSize < prNumbers.length) {
-      await sleep(200);
+      await sleep(500);
     }
   }
 
