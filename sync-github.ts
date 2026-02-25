@@ -21,7 +21,7 @@
  */
 
 import { execSync } from "child_process";
-import { writeFileSync } from "fs";
+import { writeFileSync, readFileSync, existsSync, unlinkSync } from "fs";
 
 // =============================================================================
 // Types
@@ -852,6 +852,47 @@ async function exportContributors(
 }
 
 // =============================================================================
+// Checkpointing
+// =============================================================================
+
+interface Checkpoint {
+  version: string;
+  createdAt: string;
+  owners: string[];
+  since: string | null;
+  completedRepos: Record<string, {
+    pullRequests: ExportPayload["pullRequests"];
+    commits: ExportPayload["commits"];
+    issues: ExportPayload["issues"];
+    reviews: ExportPayload["reviews"];
+  }>;
+}
+
+function checkpointFilePath(outputFile: string): string {
+  return outputFile.replace(/\.json$/, "") + ".checkpoint.json";
+}
+
+function loadCheckpoint(path: string, owners: string[], since: Date | undefined): Checkpoint | null {
+  try {
+    if (!existsSync(path)) return null;
+    const checkpoint: Checkpoint = JSON.parse(readFileSync(path, "utf-8"));
+    const sameOwners = JSON.stringify(checkpoint.owners.slice().sort()) === JSON.stringify(owners.slice().sort());
+    const sameSince = checkpoint.since === (since?.toISOString() || null);
+    if (!sameOwners || !sameSince) {
+      console.log("Checkpoint found but parameters changed — starting fresh.");
+      return null;
+    }
+    return checkpoint;
+  } catch {
+    return null;
+  }
+}
+
+function saveCheckpoint(path: string, checkpoint: Checkpoint): void {
+  writeFileSync(path, JSON.stringify(checkpoint));
+}
+
+// =============================================================================
 // Main Function
 // =============================================================================
 
@@ -869,6 +910,7 @@ async function main() {
     console.log("  --org-slug=<slug>    Organization slug (default: first owner)");
     console.log("  --since=<date>       Only export after date (YYYY-MM-DD)");
     console.log("  --max-pages=<n>      Max pages per repo (default: 50)");
+    console.log("  --no-resume          Ignore existing checkpoint and start fresh");
     console.log("");
     console.log("Examples:");
     console.log("  npm run export -- myorg                        # all repos");
@@ -885,8 +927,12 @@ async function main() {
   let singleRepo: string | null = null;
   let since: Date | undefined;
   let maxPages = 50;
+  let noResume = false;
 
   for (const arg of args) {
+    if (arg === "--no-resume") {
+      noResume = true;
+    }
     if (arg.startsWith("--repo=")) {
       singleRepo = arg.replace("--repo=", "");
     }
@@ -922,6 +968,27 @@ async function main() {
     const allReviews: ExportPayload["reviews"] = [];
     let totalRepoCount = 0;
 
+    const cpFile = checkpointFilePath(outputFile);
+    const checkpoint: Checkpoint = (!noResume && loadCheckpoint(cpFile, owners, since)) || {
+      version: "1.0.0",
+      createdAt: new Date().toISOString(),
+      owners,
+      since: since?.toISOString() || null,
+      completedRepos: {},
+    };
+
+    const resumedCount = Object.keys(checkpoint.completedRepos).length;
+    if (resumedCount > 0) {
+      console.log(`Resuming from checkpoint: ${resumedCount} repos already done.`);
+      for (const data of Object.values(checkpoint.completedRepos)) {
+        allPullRequests.push(...data.pullRequests);
+        allCommits.push(...data.commits);
+        allIssues.push(...data.issues);
+        allReviews.push(...data.reviews);
+        totalRepoCount++;
+      }
+    }
+
     for (const owner of owners) {
       if (multiOwner) {
         console.log("");
@@ -944,9 +1011,16 @@ async function main() {
       const multiRepo = repos.length > 1;
 
       for (const repo of repos) {
+        const repoKey = `${owner}/${repo}`;
+
+        if (checkpoint.completedRepos[repoKey]) {
+          console.log(`Skipping ${repoKey} (already in checkpoint)`);
+          continue;
+        }
+
         if (multiRepo || multiOwner) {
           console.log("");
-          console.log(`--- Repo: ${owner}/${repo} ---`);
+          console.log(`--- Repo: ${repoKey} ---`);
         }
 
         const options: ExportOptions = {
@@ -993,6 +1067,10 @@ async function main() {
         allCommits.push(...commits);
         allIssues.push(...issues);
         allReviews.push(...reviews);
+
+        checkpoint.completedRepos[repoKey] = { pullRequests: prs, commits, issues, reviews };
+        saveCheckpoint(cpFile, checkpoint);
+        console.log(`Checkpoint saved (${Object.keys(checkpoint.completedRepos).length} repos done).`);
       }
     }
 
@@ -1023,8 +1101,9 @@ async function main() {
       reviews: allReviews,
     };
 
-    // Write to file
+    // Write to file and clean up checkpoint
     writeFileSync(outputFile, JSON.stringify(payload, null, 2));
+    if (existsSync(cpFile)) unlinkSync(cpFile);
 
     console.log("");
     console.log("=".repeat(60));
