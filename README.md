@@ -53,6 +53,7 @@ Options:
   --org-slug=<slug>    Organization slug (default: first owner)
   --since=YYYY-MM-DD   Only export after date
   --max-pages=<n>      Max pages per repo (default: 50)
+  --no-resume          Ignore existing checkpoint and start fresh
 
 Examples:
   npm run export -- your-org                        # all repos
@@ -61,6 +62,23 @@ Examples:
   npm run export -- your-org --since=2025-01-01
   npm run export -- your-org --max-pages=100
 ```
+
+### Resuming an Interrupted Export
+
+The GitHub export automatically saves a checkpoint after each repo completes. If the export is interrupted (network error, timeout, Ctrl+C), just re-run the exact same command and it will pick up where it left off:
+
+```bash
+# First run — interrupted at repo 47/120
+npm run export -- your-org
+
+# Re-run — skips the first 46 repos automatically
+npm run export -- your-org
+
+# Force a fresh start, ignoring the checkpoint
+npm run export -- your-org --no-resume
+```
+
+The checkpoint file (`arka-data.checkpoint.json`) is deleted automatically on successful completion. It is invalidated and ignored if you change the org list or `--since` date.
 
 ### Jira Export
 
@@ -158,7 +176,11 @@ Organization
 
 - **gh: command not found** → Install: `brew install gh` (macOS) or see [cli.github.com](https://cli.github.com/)
 - **Authentication required** → Run `gh auth login`
-- **Rate limit exceeded** → Use `--since` to limit date range
+- **Rate limit exceeded** → Use `--since` to limit date range, or the script will automatically back off and retry
+- **Export interrupted** → Just re-run the same command — checkpointing means it resumes from where it stopped
+- **Contributor emails missing** → Email fetching requires org admin access; run `gh auth login` with an org admin account
+- **Jira returns 0 issues** → The API token may lack permission to search all projects; pass a project key explicitly
+- **GraphQL timeouts** → The script retries automatically; if it keeps failing, try `--max-pages=25` to reduce query size
 
 ## Support
 
