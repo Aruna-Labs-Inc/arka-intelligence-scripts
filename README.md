@@ -40,6 +40,40 @@ npm run export:jira -- mycompany.atlassian.net --since=2025-01-01
 
 **Get Jira API Token:** https://id.atlassian.com/manage-profile/security/api-tokens
 
+### Claude Code Analytics Export
+
+**Prerequisites:** Node.js v18+, Anthropic Admin API key
+
+```bash
+# 1. Set your Admin API key
+export CLAUDE_ADMIN_API_KEY="sk-ant-admin..."
+
+# 2. Export Claude Code usage metrics (last 7 days by default)
+npm run export:claude-code -- --org-slug=myorg
+
+# 3. Upload claude-code-data.json to Arka Intelligence
+```
+
+**Get an Admin API key:** https://console.anthropic.com/settings/admin-keys
+Requires organization admin role — standard API keys will not work.
+
+### Cursor Analytics Export
+
+**Prerequisites:** Node.js v18+, Cursor enterprise team, Cursor Analytics API key
+
+```bash
+# 1. Set your Cursor API key
+export CURSOR_API_KEY="your-api-key"
+
+# 2. Export Cursor usage metrics (last 7 days by default)
+npm run export:cursor -- --org-slug=myorg
+
+# 3. Upload cursor-data.json to Arka Intelligence
+```
+
+**Get a Cursor API key:** Cursor → Settings → Team → Analytics API → Generate Key
+Requires enterprise team plan.
+
 ## Command Options
 
 ### GitHub Export
@@ -80,6 +114,44 @@ npm run export -- your-org --no-resume
 
 The checkpoint file (`arka-data.checkpoint.json`) is deleted automatically on successful completion. It is invalidated and ignored if you change the org list or `--since` date.
 
+### Claude Code Analytics Export
+
+```bash
+npm run export:claude-code -- [options]
+
+Options:
+  --output=<file>      Output file (default: claude-code-data.json)
+  --org-slug=<slug>    Organization slug
+  --days=<n>           Days of history to fetch (default: 7)
+  --since=YYYY-MM-DD   Start date (overrides --days)
+
+Examples:
+  npm run export:claude-code -- --org-slug=myorg
+  npm run export:claude-code -- --org-slug=myorg --days=30
+  npm run export:claude-code -- --org-slug=myorg --since=2025-01-01
+```
+
+**What's captured:** sessions, lines added/removed, commits and PRs created by Claude Code, tool acceptance rates (edit/write), token breakdown by model, estimated cost, terminal types, seat utilization (active vs inactive users).
+
+### Cursor Analytics Export
+
+```bash
+npm run export:cursor -- [options]
+
+Options:
+  --output=<file>      Output file (default: cursor-data.json)
+  --org-slug=<slug>    Organization slug
+  --days=<n>           Days of history to fetch (default: 7)
+  --since=YYYY-MM-DD   Start date (overrides --days)
+
+Examples:
+  npm run export:cursor -- --org-slug=myorg
+  npm run export:cursor -- --org-slug=myorg --days=30
+  npm run export:cursor -- --org-slug=myorg --since=2025-01-01
+```
+
+**What's captured:** agent edit acceptance rates, tab completion rates, daily active days, models used, commands run, plan/ask mode usage, seat utilization (active vs inactive users).
+
 ### Jira Export
 
 ```bash
@@ -112,6 +184,17 @@ Examples:
 - **Issues** - Issue type, state, priority, story points, cycle time
 - **People** - Author, assignee, reporter (by email)
 - **Metadata** - Labels, status, resolution date
+
+**Claude Code Export** (`claude-code-data.json`):
+- **Per-user metrics** - Sessions, lines added/removed, commits, PRs, tool acceptance rates
+- **Token usage** - Input/output/cache tokens broken down by model
+- **Cost** - Estimated cost per user and total (in USD)
+- **Seat utilization** - Active vs inactive users over the period, with inactive seats listed explicitly
+
+**Cursor Export** (`cursor-data.json`):
+- **Per-user metrics** - Agent edit acceptance rate, tab completion rate, active days
+- **Usage patterns** - Models used, commands run, plan/ask mode usage
+- **Seat utilization** - Active vs inactive users over the period, with inactive seats listed explicitly
 
 **Mapping:** Link Jira issues to GitHub activity by mapping employee emails to GitHub usernames in your org structure file.
 
@@ -181,6 +264,9 @@ Organization
 - **Contributor emails missing** → Email fetching requires org admin access; run `gh auth login` with an org admin account
 - **Jira returns 0 issues** → The API token may lack permission to search all projects; pass a project key explicitly
 - **GraphQL timeouts** → The script retries automatically; if it keeps failing, try `--max-pages=25` to reduce query size
+- **Claude Code: authentication failed** → Must use an Admin API key (`sk-ant-admin...`), not a regular API key; create one at https://console.anthropic.com/settings/admin-keys
+- **Claude Code: 0 users returned** → The Admin API key must belong to an org admin; individual accounts are not supported
+- **Cursor: authentication failed** → API key requires enterprise team plan; generate it under Settings → Team → Analytics API
 
 ## Support
 

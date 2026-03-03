@@ -5,7 +5,9 @@
   "main": "sync-github.ts",
   "scripts": {
     "export": "tsx sync-github.ts",
-    "export:jira": "tsx sync-jira.ts"
+    "export:jira": "tsx sync-jira.ts",
+    "export:claude-code": "tsx sync-claude-code.ts",
+    "export:cursor": "tsx sync-cursor.ts"
   },
   "keywords": [
     "arka",
