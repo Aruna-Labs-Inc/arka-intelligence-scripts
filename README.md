@@ -74,6 +74,20 @@ npm run export:cursor -- --org-slug=myorg
 **Get a Cursor API key:** Cursor → Settings → Team → Analytics API → Generate Key
 Requires enterprise team plan.
 
+### GitHub Copilot Seat Utilization Export
+
+**Prerequisites:** Node.js v18+, [GitHub CLI](https://cli.github.com/), org owner or Copilot billing manager role
+
+```bash
+# 1. Authenticate
+gh auth login
+
+# 2. Export Copilot seat utilization snapshot
+npm run export:copilot -- myorg
+
+# 3. Upload copilot-data.json to Arka Intelligence
+```
+
 ## Command Options
 
 ### GitHub Export
@@ -152,6 +166,24 @@ Examples:
 
 **What's captured:** agent edit acceptance rates, tab completion rates, daily active days, models used, commands run, plan/ask mode usage, seat utilization (active vs inactive users).
 
+### GitHub Copilot Seat Utilization Export
+
+```bash
+npm run export:copilot -- <org> [options]
+
+Options:
+  --output=<file>        Output file (default: copilot-data.json)
+  --org-slug=<slug>      Organization slug (default: org name)
+  --inactive-days=<n>    Days without activity to consider inactive (default: 30)
+
+Examples:
+  npm run export:copilot -- myorg
+  npm run export:copilot -- myorg --inactive-days=14
+  npm run export:copilot -- myorg --output=seats.json
+```
+
+**What's captured:** every assigned seat with login, last activity date and editor, seat assignment date, team assignment, pending cancellation, and status (`active` / `inactive` / `never_used`). Inactive and never-used seats are listed explicitly in the terminal output.
+
 ### Jira Export
 
 ```bash
@@ -179,6 +211,11 @@ Examples:
 - **Reviews** - Reviewer, state (approved/changes requested/commented), submitted date
 - **Issues** (optional) - State, author, assignee, cycle time
 - **Contributors** - GitHub username (`externalUsername`), display name, email, avatar (bots excluded)
+
+**Copilot Export** (`copilot-data.json`):
+- **Seats** - Login, last activity date, last activity editor, seat assigned date, assigning team
+- **Status** - `active` (used within threshold), `inactive` (not used recently), `never_used`
+- **Summary** - Total seats billed, active/inactive/never-used counts
 
 **Jira Export** (`jira-data.json`):
 - **Issues** - Issue type, state, priority, story points, cycle time
@@ -267,6 +304,8 @@ Organization
 - **Claude Code: authentication failed** → Must use an Admin API key (`sk-ant-admin...`), not a regular API key; create one at https://console.anthropic.com/settings/admin-keys
 - **Claude Code: 0 users returned** → The Admin API key must belong to an org admin; individual accounts are not supported
 - **Cursor: authentication failed** → API key requires enterprise team plan; generate it under Settings → Team → Analytics API
+- **Copilot: access denied (403)** → Must be an org owner or have the Copilot billing manager role; run `gh auth login` with an eligible account
+- **Copilot: 0 seats returned** → Copilot may not be enabled for the org, or the authenticated user lacks billing access
 
 ## Support
 

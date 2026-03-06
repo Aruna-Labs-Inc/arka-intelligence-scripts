@@ -7,7 +7,8 @@
     "export": "tsx sync-github.ts",
     "export:jira": "tsx sync-jira.ts",
     "export:claude-code": "tsx sync-claude-code.ts",
-    "export:cursor": "tsx sync-cursor.ts"
+    "export:cursor": "tsx sync-cursor.ts",
+    "export:copilot": "tsx sync-copilot.ts"
   },
   "keywords": [
     "arka",
