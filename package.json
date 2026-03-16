@@ -8,7 +8,11 @@
     "export:jira": "tsx sync-jira.ts",
     "export:claude-code": "tsx sync-claude-code.ts",
     "export:cursor": "tsx sync-cursor.ts",
-    "export:copilot": "tsx sync-copilot.ts"
+    "export:copilot": "tsx sync-copilot.ts",
+    "upload:github": "tsx upload-github.ts",
+    "upload:jira": "tsx upload-jira.ts",
+    "upload:ai": "tsx upload-ai-tools.ts",
+    "upload:org": "tsx upload-org-mapping.ts"
   },
   "keywords": [
     "arka",

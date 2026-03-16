@@ -1,48 +1,51 @@
-# Arka Intelligence - Data Export Scripts
+# Arka Intelligence - Data Export & Upload Scripts
 
-Export data from GitHub and Jira into JSON files for import into Arka Intelligence.
+Export data from GitHub, Jira, and AI tools into JSON files, then upload them to the Arka Intelligence platform via API.
 
-## Quick Start
+## Prerequisites
 
-### GitHub Export
+- Node.js v18+
+- `npm install`
 
-**Prerequisites:** Node.js v18+, [GitHub CLI](https://cli.github.com/)
+---
+
+# Part 1: Collecting Data
+
+Export data from your tools into local JSON files.
+
+## GitHub Export
+
+**Additional prerequisites:** [GitHub CLI](https://cli.github.com/)
 
 ```bash
-# 1. Install and authenticate
-npm install
+# 1. Authenticate
 gh auth login
 
 # 2. Export GitHub data (PRs, commits, issues) — all repos by default
 npm run export -- your-org
 # Or multiple orgs at once:
 npm run export -- org1 org2
-
-# 3. Upload arka-data.json to Arka Intelligence
 ```
 
-### Jira Export
+## Jira Export
 
-**Prerequisites:** Node.js v18+, Jira API token
+**Additional prerequisites:** Jira API token
 
 ```bash
-# 1. Install and set credentials
-npm install
+# 1. Set credentials
 export JIRA_EMAIL="your-email@company.com"
 export JIRA_API_TOKEN="your-api-token"
 
 # 2. Export Jira issues (project key optional — omit to export all projects)
 npm run export:jira -- mycompany.atlassian.net PROJ
 npm run export:jira -- mycompany.atlassian.net --since=2025-01-01
-
-# 3. Upload jira-data.json to Arka Intelligence
 ```
 
 **Get Jira API Token:** https://id.atlassian.com/manage-profile/security/api-tokens
 
-### Claude Code Analytics Export
+## Claude Code Analytics Export
 
-**Prerequisites:** Node.js v18+, Anthropic Admin API key
+**Additional prerequisites:** Anthropic Admin API key
 
 ```bash
 # 1. Set your Admin API key
@@ -50,16 +53,14 @@ export CLAUDE_ADMIN_API_KEY="sk-ant-admin..."
 
 # 2. Export Claude Code usage metrics (last 7 days by default)
 npm run export:claude-code -- --org-slug=myorg
-
-# 3. Upload claude-code-data.json to Arka Intelligence
 ```
 
 **Get an Admin API key:** https://console.anthropic.com/settings/admin-keys
 Requires organization admin role — standard API keys will not work.
 
-### Cursor Analytics Export
+## Cursor Analytics Export
 
-**Prerequisites:** Node.js v18+, Cursor enterprise team, Cursor Analytics API key
+**Additional prerequisites:** Cursor enterprise team, Cursor Analytics API key
 
 ```bash
 # 1. Set your Cursor API key
@@ -67,16 +68,14 @@ export CURSOR_API_KEY="your-api-key"
 
 # 2. Export Cursor usage metrics (last 7 days by default)
 npm run export:cursor -- --org-slug=myorg
-
-# 3. Upload cursor-data.json to Arka Intelligence
 ```
 
 **Get a Cursor API key:** Cursor → Settings → Team → Analytics API → Generate Key
 Requires enterprise team plan.
 
-### GitHub Copilot Seat Utilization Export
+## GitHub Copilot Seat Utilization Export
 
-**Prerequisites:** Node.js v18+, [GitHub CLI](https://cli.github.com/), org owner or Copilot billing manager role
+**Additional prerequisites:** [GitHub CLI](https://cli.github.com/), org owner or Copilot billing manager role
 
 ```bash
 # 1. Authenticate
@@ -84,11 +83,9 @@ gh auth login
 
 # 2. Export Copilot seat utilization snapshot
 npm run export:copilot -- myorg
-
-# 3. Upload copilot-data.json to Arka Intelligence
 ```
 
-## Command Options
+## Export Command Options
 
 ### GitHub Export
 
@@ -237,6 +234,134 @@ Examples:
 
 See `example-output.json` for GitHub format.
 
+---
+
+# Part 2: Uploading Data
+
+Upload exported JSON files to Arka Intelligence via the API. All upload commands read from the exported files and POST them to the platform.
+
+## Setup
+
+Set your Arka Intelligence Admin API key:
+
+```bash
+# Option A: environment variable
+export API_ADMIN_KEY="ak_your_key_here"
+
+# Option B: .env file (auto-loaded by upload scripts)
+echo 'API_ADMIN_KEY=ak_your_key_here' > .env
+```
+
+**Get an API key:** Request an admin key from your Arka Intelligence account settings.
+
+## Upload GitHub Data
+
+Uploads PRs, commits, and contributors from the GitHub export.
+
+```bash
+# Upload after exporting
+npm run upload:github
+
+# Custom input file
+npm run upload:github -- --input=arka-data.json
+
+# Preview without uploading
+npm run upload:github -- --dry-run
+```
+
+## Upload Jira Data
+
+Uploads issues from the Jira export.
+
+```bash
+npm run upload:jira
+
+npm run upload:jira -- --input=jira-data.json
+npm run upload:jira -- --dry-run
+```
+
+## Upload AI Tool Data
+
+Uploads usage data from Claude Code, Cursor, or GitHub Copilot exports.
+
+```bash
+# Claude Code
+npm run upload:ai -- --source=claude-code
+
+# Cursor
+npm run upload:ai -- --source=cursor
+
+# GitHub Copilot
+npm run upload:ai -- --source=github-copilot
+
+# Custom input file
+npm run upload:ai -- --source=cursor --input=cursor-data.json
+
+# Preview
+npm run upload:ai -- --source=claude-code --dry-run
+```
+
+## Upload Org Mapping
+
+Uploads team structure and user-to-team assignments. Accepts both the existing groups/users format (see `sample-org-mapping.json`) and the API's native teams/members format.
+
+```bash
+npm run upload:org
+
+npm run upload:org -- --input=org-mapping.json
+npm run upload:org -- --dry-run
+```
+
+## Upload Command Options
+
+All upload commands share these options:
+
+| Option | Description |
+|--------|-------------|
+| `--input=<file>` | Input JSON file (defaults to the standard export filename) |
+| `--api-url=<url>` | API base URL (default: `https://intel.arka.so/api/v1`) |
+| `--dry-run` | Print payload size without uploading |
+
+### Upload Response
+
+Each successful upload returns a diff summary:
+
+```
+Upload successful!
+  Upload ID:  abc-123
+  Records:    542
+  Added:      48
+  Changed:    12
+  Unchanged:  482
+  Missing:    0
+```
+
+- **Added** — new records not previously in the platform
+- **Changed** — existing records updated with new data
+- **Unchanged** — records identical to what's already stored
+- **Missing** — records in the platform but not in this upload (not deleted)
+
+## End-to-End Workflow
+
+```bash
+# 1. Export data from all sources
+npm run export -- your-org
+npm run export:jira -- mycompany.atlassian.net
+npm run export:claude-code -- --org-slug=myorg
+npm run export:cursor -- --org-slug=myorg
+npm run export:copilot -- myorg
+
+# 2. Upload everything to Arka Intelligence
+npm run upload:github
+npm run upload:jira
+npm run upload:ai -- --source=claude-code
+npm run upload:ai -- --source=cursor
+npm run upload:ai -- --source=github-copilot
+npm run upload:org -- --input=org-mapping.json
+```
+
+---
+
 ## Organizational Structure (Required for Team Analytics)
 
 Create a separate JSON file mapping users to groups (teams). Export this from your HR system (Workday, BambooHR, etc.) and upload it to Arka Intelligence separately.
@@ -294,6 +419,7 @@ Organization
 
 ## Troubleshooting
 
+### Export Issues
 - **gh: command not found** → Install: `brew install gh` (macOS) or see [cli.github.com](https://cli.github.com/)
 - **Authentication required** → Run `gh auth login`
 - **Rate limit exceeded** → Use `--since` to limit date range, or the script will automatically back off and retry
@@ -306,6 +432,12 @@ Organization
 - **Cursor: authentication failed** → API key requires enterprise team plan; generate it under Settings → Team → Analytics API
 - **Copilot: access denied (403)** → Must be an org owner or have the Copilot billing manager role; run `gh auth login` with an eligible account
 - **Copilot: 0 seats returned** → Copilot may not be enabled for the org, or the authenticated user lacks billing access
+
+### Upload Issues
+- **401 Unauthorized** → Check that `API_ADMIN_KEY` is set correctly in `.env` or as an environment variable
+- **403 Forbidden** → Your API key may be read-only; uploads require an admin key
+- **422 Validation error** → The exported data may be in an unexpected format; try re-exporting first
+- **File not found** → Run the corresponding export command first to generate the JSON file
 
 ## Support
 
