@@ -23,7 +23,8 @@
  */
 
 import { execSync } from "child_process";
-import { writeFileSync } from "fs";
+import { writeFileSync, readFileSync } from "fs";
+import { shouldUpload, isUploadOnly, uploadToApi, readInputFile } from "./upload-helper";
 
 // =============================================================================
 // Types
@@ -392,6 +393,45 @@ async function main() {
     if (flag.startsWith("--since=")) sinceOverride = new Date(flag.replace("--since=", ""));
   }
 
+  // --upload-only: skip export, read existing file and upload
+  if (isUploadOnly()) {
+    const inputFile = flags.find((a) => a.startsWith("--input="))?.replace("--input=", "") || outputFile;
+    const data = readInputFile(inputFile);
+    console.log(`Read ${inputFile}: ${data.users?.length ?? 0} users`);
+    const uploadPayload = {
+      metadata: {
+        source: "claude-code" as const,
+        organizationSlug: data.metadata?.organizationSlug || orgSlug,
+        startDate: data.metadata?.startDate,
+        endDate: data.metadata?.endDate,
+        exportedAt: data.metadata?.exportedAt || new Date().toISOString(),
+        version: "1.0",
+      },
+      users: (data.users || []).map((u: any) => ({
+        email: u.email,
+        githubUsername: "",
+        tool: "claude-code" as const,
+        name: u.email,
+        isActive: u.isActive,
+        activeDays: u.activeDays ?? 0,
+        tabsAccepted: 0,
+        tabsTotal: 0,
+        agentEditsAccepted: u.toolActions?.overall?.accepted ?? 0,
+        agentEditsRejected: u.toolActions?.overall?.rejected ?? 0,
+        commandsRun: 0,
+        planModeUses: 0,
+        askModeUses: 0,
+        modelsUsed: (u.modelBreakdown || []).map((m: any) => m.model),
+        linesWithAi: u.totalLinesAdded ?? 0,
+        totalLines: (u.totalLinesAdded ?? 0) + (u.totalLinesRemoved ?? 0),
+        prsWithAi: u.totalPRs ?? 0,
+        totalPrs: u.totalPRs ?? 0,
+      })),
+    };
+    await uploadToApi("ai-tools", uploadPayload);
+    process.exit(0);
+  }
+
   const endDate = new Date();
   endDate.setUTCHours(0, 0, 0, 0);
   // API only has data older than 1 hour; use yesterday as safe end date
@@ -483,6 +523,44 @@ async function main() {
     console.log("");
     console.log(`Output written to: ${outputFile}`);
     console.log(`File size: ${(JSON.stringify(payload).length / 1024).toFixed(2)} KB`);
+
+    if (shouldUpload()) {
+      const uploadPayload = {
+        metadata: {
+          source: "claude-code" as const,
+          organizationSlug: payload.metadata.organizationSlug,
+          startDate: payload.metadata.startDate,
+          endDate: payload.metadata.endDate,
+          exportedAt: payload.metadata.exportedAt,
+          version: "1.0",
+        },
+        users: payload.users.map((u: any) => ({
+          email: u.email,
+          githubUsername: "",
+          tool: "claude-code" as const,
+          name: u.email,
+          isActive: u.isActive,
+          activeDays: u.activeDays ?? 0,
+          tabsAccepted: 0,
+          tabsTotal: 0,
+          agentEditsAccepted: u.toolActions?.overall?.accepted ?? 0,
+          agentEditsRejected: u.toolActions?.overall?.rejected ?? 0,
+          commandsRun: 0,
+          planModeUses: 0,
+          askModeUses: 0,
+          modelsUsed: (u.modelBreakdown || []).map((m: any) => m.model),
+          linesWithAi: u.totalLinesAdded ?? 0,
+          totalLines: (u.totalLinesAdded ?? 0) + (u.totalLinesRemoved ?? 0),
+          prsWithAi: u.totalPRs ?? 0,
+          totalPrs: u.totalPRs ?? 0,
+        })),
+      };
+      await uploadToApi("ai-tools", uploadPayload);
+    } else {
+      console.log("");
+      console.log("Tip: add --upload to export and upload in one step");
+    }
+
     process.exit(0);
   } catch (error) {
     console.error("Export failed:", error);

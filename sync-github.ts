@@ -22,6 +22,7 @@
 
 import { execSync } from "child_process";
 import { writeFileSync, readFileSync, existsSync, unlinkSync } from "fs";
+import { shouldUpload, isUploadOnly, uploadToApi, readInputFile } from "./upload-helper";
 
 // =============================================================================
 // Types
@@ -900,6 +901,61 @@ async function main() {
   const args = process.argv.slice(2);
   const positional = args.filter((a) => !a.startsWith("--"));
 
+  // --upload-only: skip export, read existing file and upload
+  if (isUploadOnly()) {
+    const inputFile = args.find((a) => a.startsWith("--input="))?.replace("--input=", "") || "arka-data.json";
+    const data = readInputFile(inputFile);
+    console.log(`Read ${inputFile}: ${data.pullRequests?.length ?? 0} PRs, ${data.commits?.length ?? 0} commits`);
+    const uploadPayload = {
+      metadata: {
+        exportedAt: data.metadata?.exportedAt || new Date().toISOString(),
+        repository: data.metadata?.repository || "unknown",
+        organizationSlug: data.metadata?.organizationSlug || "unknown",
+        since: data.metadata?.since || null,
+        version: "1.0",
+      },
+      contributors: (data.contributors || []).map((c: any) => ({
+        username: c.externalUsername,
+        displayName: c.displayName || c.externalUsername,
+      })),
+      pullRequests: (data.pullRequests || []).map((pr: any) => ({
+        externalId: String(pr.externalId),
+        title: pr.title,
+        authorUsername: pr.authorUsername,
+        state: pr.state,
+        createdAt: pr.createdAt,
+        externalUrl: pr.externalUrl,
+        mergedAt: pr.mergedAt || null,
+        closedAt: pr.closedAt || null,
+        additions: pr.additions ?? 0,
+        deletions: pr.deletions ?? 0,
+        commitsCount: pr.commitsCount ?? 0,
+        reviewsCount: pr.reviewsCount ?? 0,
+        cycleTimeHours: pr.cycleTimeHours ?? 0,
+        metadata: {
+          labels: pr.metadata?.labels || [],
+          reviewers: pr.metadata?.reviewers || [],
+          draft: pr.metadata?.draft ?? false,
+        },
+      })),
+      commits: (data.commits || []).map((c: any) => ({
+        sha: c.sha,
+        authorUsername: c.authorUsername,
+        message: c.message,
+        committedAt: c.committedAt,
+        prExternalId: c.prExternalId || null,
+        externalUrl: c.externalUrl,
+        additions: c.additions ?? 0,
+        deletions: c.deletions ?? 0,
+        isAiAssisted: c.isAiAssisted ?? false,
+        aiTool: c.aiTool || null,
+        aiModel: c.aiModel || null,
+      })),
+    };
+    await uploadToApi("github-prs", uploadPayload);
+    process.exit(0);
+  }
+
   if (positional.length < 1) {
     console.log("Usage:");
     console.log("  npm run export -- <owner> [owner2 ...] [options]");
@@ -911,12 +967,16 @@ async function main() {
     console.log("  --since=<date>       Only export after date (YYYY-MM-DD)");
     console.log("  --max-pages=<n>      Max pages per repo (default: 50)");
     console.log("  --no-resume          Ignore existing checkpoint and start fresh");
+    console.log("  --upload             Upload to Arka Intelligence after export");
+    console.log("  --upload-only        Skip export, upload existing file");
     console.log("");
     console.log("Examples:");
     console.log("  npm run export -- myorg                        # all repos");
     console.log("  npm run export -- myorg --repo=myrepo          # single repo");
     console.log("  npm run export -- org1 org2 org3               # multiple orgs");
     console.log("  npm run export -- myorg --since=2025-01-01");
+    console.log("  npm run export -- myorg --upload               # export + upload");
+    console.log("  npm run export -- --upload-only                # upload existing file");
     process.exit(1);
   }
 
@@ -1120,10 +1180,58 @@ async function main() {
     console.log(
       `File size: ${(JSON.stringify(payload).length / 1024).toFixed(2)} KB`
     );
-    console.log("");
-    console.log("Next steps:");
-    console.log("  1. Review the exported data in the JSON file");
-    console.log("  2. Upload the file to your Arka Intelligence organization");
+    if (shouldUpload()) {
+      const uploadPayload = {
+        metadata: {
+          exportedAt: payload.metadata.exportedAt,
+          repository: payload.metadata.repository,
+          organizationSlug: payload.metadata.organizationSlug,
+          since: payload.metadata.since,
+          version: "1.0",
+        },
+        contributors: payload.contributors.map((c: any) => ({
+          username: c.externalUsername,
+          displayName: c.displayName || c.externalUsername,
+        })),
+        pullRequests: payload.pullRequests.map((pr: any) => ({
+          externalId: String(pr.externalId),
+          title: pr.title,
+          authorUsername: pr.authorUsername,
+          state: pr.state,
+          createdAt: pr.createdAt,
+          externalUrl: pr.externalUrl,
+          mergedAt: pr.mergedAt || null,
+          closedAt: pr.closedAt || null,
+          additions: pr.additions ?? 0,
+          deletions: pr.deletions ?? 0,
+          commitsCount: pr.commitsCount ?? 0,
+          reviewsCount: pr.reviewsCount ?? 0,
+          cycleTimeHours: pr.cycleTimeHours ?? 0,
+          metadata: {
+            labels: pr.metadata?.labels || [],
+            reviewers: pr.metadata?.reviewers || [],
+            draft: pr.metadata?.draft ?? false,
+          },
+        })),
+        commits: payload.commits.map((c: any) => ({
+          sha: c.sha,
+          authorUsername: c.authorUsername,
+          message: c.message,
+          committedAt: c.committedAt,
+          prExternalId: c.prExternalId || null,
+          externalUrl: c.externalUrl,
+          additions: c.additions ?? 0,
+          deletions: c.deletions ?? 0,
+          isAiAssisted: c.isAiAssisted ?? false,
+          aiTool: c.aiTool || null,
+          aiModel: c.aiModel || null,
+        })),
+      };
+      await uploadToApi("github-prs", uploadPayload);
+    } else {
+      console.log("");
+      console.log("Tip: add --upload to export and upload in one step");
+    }
 
     process.exit(0);
   } catch (error) {

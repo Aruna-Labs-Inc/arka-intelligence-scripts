@@ -28,7 +28,8 @@
  */
 
 import { execSync } from "child_process";
-import { writeFileSync } from "fs";
+import { writeFileSync, readFileSync } from "fs";
+import { shouldUpload, isUploadOnly, uploadToApi, readInputFile } from "./upload-helper";
 
 // =============================================================================
 // Types
@@ -368,6 +369,42 @@ async function exportJiraIssues(
 async function main() {
   const args = process.argv.slice(2);
 
+  // --upload-only: skip export, read existing file and upload
+  if (isUploadOnly()) {
+    const inputFile = args.find((a) => a.startsWith("--input="))?.replace("--input=", "") || "jira-data.json";
+    const data = readInputFile(inputFile);
+    console.log(`Read ${inputFile}: ${data.issues?.length ?? 0} issues`);
+    const uploadPayload = {
+      metadata: {
+        exportedAt: data.metadata?.exportedAt || new Date().toISOString(),
+        source: "jira",
+        projectKey: data.metadata?.projectKey || null,
+        organizationSlug: data.metadata?.organizationSlug || "unknown",
+        since: data.metadata?.since || null,
+        version: "1.0",
+      },
+      issues: (data.issues || []).map((issue: any) => ({
+        externalId: issue.externalId,
+        title: issue.title,
+        state: issue.state,
+        createdAt: issue.createdAt,
+        externalUrl: issue.externalUrl,
+        issueType: issue.issueType || "Task",
+        assigneeEmail: issue.assigneeEmail || null,
+        priority: issue.priority || null,
+        storyPoints: issue.storyPoints ?? null,
+        resolvedAt: issue.resolvedAt || null,
+        cycleTimeHours: issue.cycleTimeHours ?? null,
+        metadata: {
+          labels: issue.metadata?.labels || [],
+          statusName: issue.metadata?.statusName || issue.state,
+        },
+      })),
+    };
+    await uploadToApi("jira-issues", uploadPayload);
+    process.exit(0);
+  }
+
   if (args.length < 1 || args[0].startsWith("--")) {
     console.log("Usage: npm run export:jira -- <domain> [project-key] [options]");
     console.log("");
@@ -378,6 +415,8 @@ async function main() {
     );
     console.log("  --since=<date>       Only export after date (YYYY-MM-DD)");
     console.log("  --max-results=<n>    Max issues to fetch (default: 1000)");
+    console.log("  --upload             Upload to Arka Intelligence after export");
+    console.log("  --upload-only        Skip export, upload existing file");
     console.log("");
     console.log("Authentication:");
     console.log("  Set JIRA_EMAIL and JIRA_API_TOKEN environment variables");
@@ -388,6 +427,9 @@ async function main() {
     );
     console.log(
       "  npm run export:jira -- mycompany.atlassian.net --since=2025-01-01"
+    );
+    console.log(
+      "  npm run export:jira -- mycompany.atlassian.net PROJ --upload"
     );
     process.exit(1);
   }
@@ -464,13 +506,39 @@ async function main() {
     console.log(
       `File size: ${(JSON.stringify(payload).length / 1024).toFixed(2)} KB`
     );
-    console.log("");
-    console.log("Next steps:");
-    console.log("  1. Review the exported data in the JSON file");
-    console.log("  2. Upload the file to your Arka Intelligence organization");
-    console.log(
-      "  3. Map issue emails to GitHub usernames for complete analytics"
-    );
+    if (shouldUpload()) {
+      const uploadPayload = {
+        metadata: {
+          exportedAt: payload.metadata.exportedAt,
+          source: "jira",
+          projectKey: payload.metadata.projectKey,
+          organizationSlug: payload.metadata.organizationSlug,
+          since: payload.metadata.since,
+          version: "1.0",
+        },
+        issues: payload.issues.map((issue: any) => ({
+          externalId: issue.externalId,
+          title: issue.title,
+          state: issue.state,
+          createdAt: issue.createdAt,
+          externalUrl: issue.externalUrl,
+          issueType: issue.issueType || "Task",
+          assigneeEmail: issue.assigneeEmail || null,
+          priority: issue.priority || null,
+          storyPoints: issue.storyPoints ?? null,
+          resolvedAt: issue.resolvedAt || null,
+          cycleTimeHours: issue.cycleTimeHours ?? null,
+          metadata: {
+            labels: issue.metadata?.labels || [],
+            statusName: issue.metadata?.statusName || issue.state,
+          },
+        })),
+      };
+      await uploadToApi("jira-issues", uploadPayload);
+    } else {
+      console.log("");
+      console.log("Tip: add --upload to export and upload in one step");
+    }
 
     process.exit(0);
   } catch (error) {

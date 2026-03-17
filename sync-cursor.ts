@@ -24,7 +24,8 @@
  */
 
 import { execSync } from "child_process";
-import { writeFileSync } from "fs";
+import { writeFileSync, readFileSync } from "fs";
+import { shouldUpload, isUploadOnly, uploadToApi, readInputFile } from "./upload-helper";
 
 // =============================================================================
 // Types
@@ -386,6 +387,45 @@ async function main() {
     if (flag.startsWith("--since=")) sinceOverride = flag.replace("--since=", "");
   }
 
+  // --upload-only: skip export, read existing file and upload
+  if (isUploadOnly()) {
+    const inputFile = flags.find((a) => a.startsWith("--input="))?.replace("--input=", "") || outputFile;
+    const data = readInputFile(inputFile);
+    console.log(`Read ${inputFile}: ${data.users?.length ?? 0} users`);
+    const uploadPayload = {
+      metadata: {
+        source: "cursor" as const,
+        organizationSlug: data.metadata?.organizationSlug || orgSlug,
+        startDate: data.metadata?.startDate,
+        endDate: data.metadata?.endDate,
+        exportedAt: data.metadata?.exportedAt || new Date().toISOString(),
+        version: "1.0",
+      },
+      users: (data.users || []).map((u: any) => ({
+        email: u.email || "",
+        githubUsername: "",
+        tool: "cursor" as const,
+        name: u.name || u.email || u.userId,
+        isActive: u.isActive,
+        activeDays: u.activeDays ?? 0,
+        tabsAccepted: u.tabs?.accepted ?? 0,
+        tabsTotal: u.tabs?.total ?? 0,
+        agentEditsAccepted: u.agentEdits?.accepted ?? 0,
+        agentEditsRejected: u.agentEdits?.rejected ?? 0,
+        commandsRun: u.commandsRun ?? 0,
+        planModeUses: u.planModeUses ?? 0,
+        askModeUses: u.askModeUses ?? 0,
+        modelsUsed: u.modelsUsed || [],
+        linesWithAi: 0,
+        totalLines: 0,
+        prsWithAi: 0,
+        totalPrs: 0,
+      })),
+    };
+    await uploadToApi("ai-tools", uploadPayload);
+    process.exit(0);
+  }
+
   const endDate = new Date();
   endDate.setUTCHours(0, 0, 0, 0);
   const endStr = endDate.toISOString().split("T")[0];
@@ -481,6 +521,44 @@ async function main() {
     console.log("");
     console.log(`Output written to: ${outputFile}`);
     console.log(`File size: ${(JSON.stringify(payload).length / 1024).toFixed(2)} KB`);
+
+    if (shouldUpload()) {
+      const uploadPayload = {
+        metadata: {
+          source: "cursor" as const,
+          organizationSlug: payload.metadata.organizationSlug,
+          startDate: payload.metadata.startDate,
+          endDate: payload.metadata.endDate,
+          exportedAt: payload.metadata.exportedAt,
+          version: "1.0",
+        },
+        users: payload.users.map((u: any) => ({
+          email: u.email || "",
+          githubUsername: "",
+          tool: "cursor" as const,
+          name: u.name || u.email || u.userId,
+          isActive: u.isActive,
+          activeDays: u.activeDays ?? 0,
+          tabsAccepted: u.tabs?.accepted ?? 0,
+          tabsTotal: u.tabs?.total ?? 0,
+          agentEditsAccepted: u.agentEdits?.accepted ?? 0,
+          agentEditsRejected: u.agentEdits?.rejected ?? 0,
+          commandsRun: u.commandsRun ?? 0,
+          planModeUses: u.planModeUses ?? 0,
+          askModeUses: u.askModeUses ?? 0,
+          modelsUsed: u.modelsUsed || [],
+          linesWithAi: 0,
+          totalLines: 0,
+          prsWithAi: 0,
+          totalPrs: 0,
+        })),
+      };
+      await uploadToApi("ai-tools", uploadPayload);
+    } else {
+      console.log("");
+      console.log("Tip: add --upload to export and upload in one step");
+    }
+
     process.exit(0);
   } catch (error) {
     console.error("Export failed:", error);

@@ -238,7 +238,7 @@ See `example-output.json` for GitHub format.
 
 # Part 2: Uploading Data
 
-Upload exported JSON files to Arka Intelligence via the API. All upload commands read from the exported files and POST them to the platform.
+Upload exported data to Arka Intelligence via the API. Each export script has built-in `--upload` and `--upload-only` flags — no separate upload commands needed.
 
 ## Setup
 
@@ -248,79 +248,47 @@ Set your Arka Intelligence Admin API key:
 # Option A: environment variable
 export API_ADMIN_KEY="ak_your_key_here"
 
-# Option B: .env file (auto-loaded by upload scripts)
+# Option B: .env file (auto-loaded by scripts)
 echo 'API_ADMIN_KEY=ak_your_key_here' > .env
 ```
 
 **Get an API key:** Request an admin key from your Arka Intelligence account settings.
 
-## Upload GitHub Data
+## Upload Flags
 
-Uploads PRs, commits, and contributors from the GitHub export.
+Every export script supports these additional flags:
 
-```bash
-# Upload after exporting
-npm run upload:github
-
-# Custom input file
-npm run upload:github -- --input=arka-data.json
-
-# Preview without uploading
-npm run upload:github -- --dry-run
-```
-
-## Upload Jira Data
-
-Uploads issues from the Jira export.
-
-```bash
-npm run upload:jira
-
-npm run upload:jira -- --input=jira-data.json
-npm run upload:jira -- --dry-run
-```
-
-## Upload AI Tool Data
-
-Uploads usage data from Claude Code, Cursor, or GitHub Copilot exports.
-
-```bash
-# Claude Code
-npm run upload:ai -- --source=claude-code
-
-# Cursor
-npm run upload:ai -- --source=cursor
-
-# GitHub Copilot
-npm run upload:ai -- --source=github-copilot
-
-# Custom input file
-npm run upload:ai -- --source=cursor --input=cursor-data.json
-
-# Preview
-npm run upload:ai -- --source=claude-code --dry-run
-```
-
-## Upload Org Mapping
-
-Uploads team structure and user-to-team assignments. Accepts both the existing groups/users format (see `sample-org-mapping.json`) and the API's native teams/members format.
-
-```bash
-npm run upload:org
-
-npm run upload:org -- --input=org-mapping.json
-npm run upload:org -- --dry-run
-```
-
-## Upload Command Options
-
-All upload commands share these options:
-
-| Option | Description |
-|--------|-------------|
-| `--input=<file>` | Input JSON file (defaults to the standard export filename) |
+| Flag | Description |
+|------|-------------|
+| `--upload` | Export data **and** upload to Arka Intelligence in one step |
+| `--upload-only` | Skip export, upload an existing JSON file |
+| `--input=<file>` | Specify input file for `--upload-only` (defaults to standard export filename) |
 | `--api-url=<url>` | API base URL (default: `https://intel.arka.so/api/v1`) |
-| `--dry-run` | Print payload size without uploading |
+| `--dry-run` | With `--upload` or `--upload-only`, print payload size without sending |
+
+## Examples
+
+```bash
+# Export + upload in one step
+npm run export -- your-org --upload
+npm run export:jira -- mycompany.atlassian.net PROJ --upload
+npm run export:claude-code -- --org-slug=myorg --upload
+npm run export:cursor -- --org-slug=myorg --upload
+npm run export:copilot -- myorg --upload
+
+# Upload previously exported files (no re-export)
+npm run export -- --upload-only
+npm run export:jira -- --upload-only
+npm run export:claude-code -- --upload-only
+npm run export:cursor -- --upload-only
+npm run export:copilot -- --upload-only
+
+# Upload a specific file
+npm run export -- --upload-only --input=arka-data.json
+
+# Dry run (preview without uploading)
+npm run export -- your-org --upload --dry-run
+```
 
 ### Upload Response
 
@@ -344,20 +312,12 @@ Upload successful!
 ## End-to-End Workflow
 
 ```bash
-# 1. Export data from all sources
-npm run export -- your-org
-npm run export:jira -- mycompany.atlassian.net
-npm run export:claude-code -- --org-slug=myorg
-npm run export:cursor -- --org-slug=myorg
-npm run export:copilot -- myorg
-
-# 2. Upload everything to Arka Intelligence
-npm run upload:github
-npm run upload:jira
-npm run upload:ai -- --source=claude-code
-npm run upload:ai -- --source=cursor
-npm run upload:ai -- --source=github-copilot
-npm run upload:org -- --input=org-mapping.json
+# Export and upload everything in one go
+npm run export -- your-org --upload
+npm run export:jira -- mycompany.atlassian.net --upload
+npm run export:claude-code -- --org-slug=myorg --upload
+npm run export:cursor -- --org-slug=myorg --upload
+npm run export:copilot -- myorg --upload
 ```
 
 ---

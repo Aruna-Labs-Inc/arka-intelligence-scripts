@@ -24,7 +24,8 @@
  */
 
 import { execSync } from "child_process";
-import { writeFileSync } from "fs";
+import { writeFileSync, readFileSync } from "fs";
+import { shouldUpload, isUploadOnly, uploadToApi, readInputFile } from "./upload-helper";
 
 // =============================================================================
 // Types
@@ -188,6 +189,46 @@ async function main() {
   const args = process.argv.slice(2);
   const positional = args.filter((a) => !a.startsWith("--"));
 
+  // --upload-only: skip export, read existing file and upload
+  if (isUploadOnly()) {
+    const inputFile = args.find((a) => a.startsWith("--input="))?.replace("--input=", "") || "copilot-data.json";
+    const data = readInputFile(inputFile);
+    console.log(`Read ${inputFile}: ${data.seats?.length ?? 0} seats`);
+    const today = new Date().toISOString().slice(0, 10);
+    const uploadPayload = {
+      metadata: {
+        source: "github-copilot" as const,
+        organizationSlug: data.metadata?.organizationSlug || "unknown",
+        startDate: today,
+        endDate: today,
+        exportedAt: data.metadata?.exportedAt || new Date().toISOString(),
+        version: "1.0",
+      },
+      users: (data.seats || []).map((s: any) => ({
+        email: "",
+        githubUsername: s.login,
+        tool: "github-copilot" as const,
+        name: s.login,
+        isActive: s.status === "active",
+        activeDays: s.status === "active" ? 1 : 0,
+        tabsAccepted: 0,
+        tabsTotal: 0,
+        agentEditsAccepted: 0,
+        agentEditsRejected: 0,
+        commandsRun: 0,
+        planModeUses: 0,
+        askModeUses: 0,
+        modelsUsed: [],
+        linesWithAi: 0,
+        totalLines: 0,
+        prsWithAi: 0,
+        totalPrs: 0,
+      })),
+    };
+    await uploadToApi("ai-tools", uploadPayload);
+    process.exit(0);
+  }
+
   if (positional.length < 1) {
     console.log("Usage: npm run export:copilot -- <org> [options]");
     console.log("");
@@ -195,10 +236,13 @@ async function main() {
     console.log("  --output=<file>        Output file (default: copilot-data.json)");
     console.log("  --org-slug=<slug>      Organization slug (default: org name)");
     console.log("  --inactive-days=<n>    Inactive threshold in days (default: 30)");
+    console.log("  --upload               Upload to Arka Intelligence after export");
+    console.log("  --upload-only          Skip export, upload existing file");
     console.log("");
     console.log("Examples:");
     console.log("  npm run export:copilot -- myorg");
     console.log("  npm run export:copilot -- myorg --inactive-days=14");
+    console.log("  npm run export:copilot -- myorg --upload");
     process.exit(1);
   }
 
@@ -311,6 +355,45 @@ async function main() {
     }
 
     console.log(`Output written to: ${outputFile}`);
+
+    if (shouldUpload()) {
+      const today = new Date().toISOString().slice(0, 10);
+      const uploadPayload = {
+        metadata: {
+          source: "github-copilot" as const,
+          organizationSlug: payload.metadata.organizationSlug,
+          startDate: today,
+          endDate: today,
+          exportedAt: payload.metadata.exportedAt,
+          version: "1.0",
+        },
+        users: payload.seats.map((s: any) => ({
+          email: "",
+          githubUsername: s.login,
+          tool: "github-copilot" as const,
+          name: s.login,
+          isActive: s.status === "active",
+          activeDays: s.status === "active" ? 1 : 0,
+          tabsAccepted: 0,
+          tabsTotal: 0,
+          agentEditsAccepted: 0,
+          agentEditsRejected: 0,
+          commandsRun: 0,
+          planModeUses: 0,
+          askModeUses: 0,
+          modelsUsed: [],
+          linesWithAi: 0,
+          totalLines: 0,
+          prsWithAi: 0,
+          totalPrs: 0,
+        })),
+      };
+      await uploadToApi("ai-tools", uploadPayload);
+    } else {
+      console.log("");
+      console.log("Tip: add --upload to export and upload in one step");
+    }
+
     process.exit(0);
   } catch (error: any) {
     console.error("Export failed:", error.message ?? error);
