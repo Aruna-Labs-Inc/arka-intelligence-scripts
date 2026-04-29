@@ -23,7 +23,11 @@
  * Options:
  *   --output=<file>      Output JSON file (default: jira-data.json)
  *   --org-slug=<slug>    Organization slug in Arka (default: project key)
- *   --since=<date>       Only export issues created after this date (YYYY-MM-DD)
+ *   --since=<date>       Only export issues updated after this date (YYYY-MM-DD).
+ *                        Filters by `updated`, not `created`, so old issues
+ *                        that close during the window are still included —
+ *                        otherwise their resolution never reaches Arka and
+ *                        cycle-time metrics drift.
  *   --max-results=<n>    Maximum issues to fetch (default: 1000)
  */
 
@@ -274,11 +278,16 @@ async function exportJiraIssues(
       : `Fetching all Jira issues...`
   );
 
-  // Build JQL query
+  // Build JQL query.
+  //
+  // Filter by `updated`, not `created`: incremental exports must include any
+  // issue that *changed state* during the window, including older issues that
+  // closed recently. Filtering by `created` silently drops their new
+  // `resolutiondate`, which corrupts cycle-time metrics downstream.
   const conditions: string[] = [];
   if (projectKey) conditions.push(`project = ${projectKey}`);
-  if (since) conditions.push(`created >= "${since.toISOString().split("T")[0]}"`);
-  const jql = (conditions.length > 0 ? conditions.join(" AND ") + " " : "") + "ORDER BY created DESC";
+  if (since) conditions.push(`updated >= "${since.toISOString().split("T")[0]}"`);
+  const jql = (conditions.length > 0 ? conditions.join(" AND ") + " " : "") + "ORDER BY updated DESC";
 
   const fields = ["summary", "status", "issuetype", "creator", "assignee", "reporter", "created", "updated", "resolutiondate", "labels", "priority", "customfield_10016"];
   const pageSize = 100;
@@ -413,7 +422,7 @@ async function main() {
     console.log(
       "  --org-slug=<slug>    Organization slug (default: project key or domain)"
     );
-    console.log("  --since=<date>       Only export after date (YYYY-MM-DD)");
+    console.log("  --since=<date>       Only export issues updated after date (YYYY-MM-DD)");
     console.log("  --max-results=<n>    Max issues to fetch (default: 1000)");
     console.log("  --upload             Upload to Arka Intelligence after export");
     console.log("  --upload-only        Skip export, upload existing file");

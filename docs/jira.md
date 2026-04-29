@@ -23,7 +23,7 @@ npm run export:jira -- <domain> [project-key] [options]
 |--------|---------|-------------|
 | `--output=<file>` | `jira-data.json` | Output file |
 | `--org-slug=<slug>` | domain prefix | Organization slug in Arka |
-| `--since=YYYY-MM-DD` | none | Only export issues created after date |
+| `--since=YYYY-MM-DD` | none | Only export issues *updated* since date. Filters by `updated` (not `created`) so old issues that close during the window are still included. |
 | `--max-results=<n>` | 1000 | Max issues to fetch |
 | `--upload` | false | Upload to Arka after export |
 | `--upload-only` | false | Skip export, upload existing file |
